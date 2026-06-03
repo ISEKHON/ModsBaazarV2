@@ -311,6 +311,7 @@ export default function ModDetail() {
                 <>
                   <div className="mono text-[10px] text-[var(--color-muted-foreground)] tracking-widest">PAID MOD</div>
                   <div className="heading text-2xl mt-1 flex items-center gap-2"><Lock className="w-5 h-5 text-[var(--color-primary)]" />DM TO REQUEST</div>
+                  <div className="heading text-xl mt-2">₹{(Number(mod.price) || 0).toFixed(2)}</div>
                   <p className="text-sm text-[var(--color-muted-foreground)] mt-2">This is a paid mod. Send a DM to the modder to request access.</p>
                   <button onClick={handleDmRequest} disabled={chatBusy || isOwnMod} data-testid="dm-btn"
                     className="w-full mt-4 h-12 heading bg-[var(--color-primary)] text-[var(--color-primary-foreground)] hover:opacity-90 btn-press shadow-[4px_4px_0_0_rgba(0,0,0,0.6)] flex items-center justify-center gap-2 transition-opacity disabled:opacity-50">
@@ -389,6 +390,7 @@ export default function ModDetail() {
               <Spec k="VERSION" v={mod.version} />
               <Spec k="CATEGORY" v={mod.category?.toUpperCase()} />
               <Spec k="ACCESS" v={mod.accessType === "unlock_code" ? "CODE" : mod.accessType?.toUpperCase()} />
+              {isPaid && <Spec k="PRICE" v={`₹${(Number(mod.price) || 0).toFixed(2)}`} />}
               {mod.author && <Spec k="AUTHOR" v={mod.author.displayName} />}
             </dl>
           </div>

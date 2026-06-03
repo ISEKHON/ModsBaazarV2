@@ -265,7 +265,7 @@ export default function Messages() {
                     <img
                       src={resolveAssetUrl(chat.otherUser.avatarUrl) || fallbackAvatar}
                       alt=""
-                      className="absolute -bottom-1 -right-1 w-5 h-5 object-cover border border-[var(--color-border)] bg-[var(--color-background)]"
+                      className="absolute -bottom-1 -right-1 w-5 h-5 object-cover border border-[var(--color-border)] bg-[var(--color-background)] rounded-full"
                     />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -318,7 +318,7 @@ export default function Messages() {
                     <img
                       src={resolveAssetUrl(activeChatData?.otherUser.avatarUrl) || fallbackAvatar}
                       alt=""
-                      className="absolute -bottom-1 -right-1 w-4 h-4 object-cover border border-[var(--color-border)] bg-[var(--color-background)]"
+                      className="absolute -bottom-1 -right-1 w-4 h-4 object-cover border border-[var(--color-border)] bg-[var(--color-background)] rounded-full"
                     />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -368,7 +368,7 @@ export default function Messages() {
                           <img
                             src={resolveAssetUrl(msg.sender.avatarUrl) || fallbackAvatar}
                             alt=""
-                            className="w-6 h-6 object-cover border border-[var(--color-border)] self-end"
+                            className="w-6 h-6 object-cover border border-[var(--color-border)] self-end rounded-full"
                           />
                         )}
                         <div className={`${msg.senderId === user.id

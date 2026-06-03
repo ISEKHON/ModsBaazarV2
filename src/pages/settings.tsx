@@ -91,9 +91,9 @@ export default function Settings() {
         <div className="mt-8">
           <div className="heading text-[11px] tracking-widest mb-3">AVATAR</div>
           <div className="flex items-center gap-4">
-            <div className="relative w-20 h-20 border-2 border-[var(--color-border)] bg-[var(--color-muted)] overflow-hidden group cursor-pointer" onClick={() => fileInput.current?.click()}>
+            <div className="relative w-20 h-20 border-2 border-[var(--color-border)] bg-[var(--color-muted)] overflow-hidden group cursor-pointer rounded-full" onClick={() => fileInput.current?.click()}>
               {avatarPreview ? (
-                <img src={resolveAssetUrl(avatarPreview)} alt="" className="w-full h-full object-cover" />
+                <img src={resolveAssetUrl(avatarPreview)} alt="" className="w-full h-full object-cover rounded-full" />
               ) : (
                 <Users className="w-10 h-10 m-5 text-[var(--color-muted-foreground)]" />
               )}

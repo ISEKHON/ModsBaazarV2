@@ -335,7 +335,7 @@ export default function Header() {
                     <img
                       src={resolveAssetUrl(user.avatarUrl)}
                       alt=""
-                      className="w-5 h-5 object-cover"
+                      className="w-5 h-5 object-cover rounded-full"
                     />
                   ) : (
                     <User className="w-4 h-4" />

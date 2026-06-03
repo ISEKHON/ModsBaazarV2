@@ -105,8 +105,8 @@ export default function Modders() {
                 data-testid={`top-modder-${i + 1}`}
               >
                 <div className="text-3xl mb-2">{RANK_LABELS[i]}</div>
-                <div className="w-16 h-16 mx-auto mb-3 border-2 border-[var(--color-border)] bg-[var(--color-muted)] overflow-hidden">
-                  {m.avatarUrl ? <img src={resolveAssetUrl(m.avatarUrl)} alt="" className="w-full h-full object-cover" /> : <Users className="w-8 h-8 m-4 text-[var(--color-muted-foreground)]" />}
+                <div className="w-16 h-16 mx-auto mb-3 border-2 border-[var(--color-border)] bg-[var(--color-muted)] overflow-hidden rounded-full">
+                  {m.avatarUrl ? <img src={resolveAssetUrl(m.avatarUrl)} alt="" className="w-full h-full object-cover rounded-full" /> : <Users className="w-8 h-8 m-4 text-[var(--color-muted-foreground)]" />}
                 </div>
                 <div className="heading text-lg flex items-center justify-center gap-1">
                   {m.displayName}
@@ -137,8 +137,8 @@ export default function Modders() {
                   className="cursor-pointer bg-[var(--color-card)] border border-[var(--color-border)] p-4 flex items-center gap-3 hover:border-[var(--color-primary)] transition-colors"
                 >
                   <div className="mono text-sm text-[var(--color-muted-foreground)] w-6">#{i + 4}</div>
-                  <div className="w-10 h-10 border border-[var(--color-border)] bg-[var(--color-muted)] overflow-hidden shrink-0">
-                    {m.avatarUrl ? <img src={resolveAssetUrl(m.avatarUrl)} alt="" className="w-full h-full object-cover" /> : <Users className="w-5 h-5 m-2.5 text-[var(--color-muted-foreground)]" />}
+                  <div className="w-10 h-10 border border-[var(--color-border)] bg-[var(--color-muted)] overflow-hidden shrink-0 rounded-full">
+                    {m.avatarUrl ? <img src={resolveAssetUrl(m.avatarUrl)} alt="" className="w-full h-full object-cover rounded-full" /> : <Users className="w-5 h-5 m-2.5 text-[var(--color-muted-foreground)]" />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="heading text-sm flex items-center gap-1 truncate">
