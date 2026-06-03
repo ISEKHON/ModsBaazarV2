@@ -153,13 +153,13 @@ code, .mono { font-family: 'JetBrains Mono', monospace; }
 }
 
 .badge-featured {
-  background: linear-gradient(135deg, hsl(200 80% 50%), hsl(210 70% 40%));
-  color: white;
+  background: linear-gradient(135deg, var(--color-primary), hsl(25 95% 45%));
+  color: var(--color-primary-foreground);
 }
 
 .badge-paid {
-  background: linear-gradient(135deg, hsl(195 70% 45%), hsl(185 60% 35%));
-  color: white;
+  background: linear-gradient(135deg, hsl(45 92% 52%), hsl(32 90% 45%));
+  color: hsl(0 0% 10%);
 }
 
 /* Marquee */
@@ -197,6 +197,28 @@ code, .mono { font-family: 'JetBrains Mono', monospace; }
   background: linear-gradient(90deg, var(--color-muted) 25%, var(--color-border) 50%, var(--color-muted) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* Loading indicator */
+.loading-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 9999px;
+  animation: spin 0.9s linear infinite;
+}
+.spinner-sm {
+  width: 12px;
+  height: 12px;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 

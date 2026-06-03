@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import LoadingIndicator from "@/components/LoadingIndicator";
 import { useRouter } from "next/router";
 import { onSocketEvent } from "@/lib/socket";
 import { motion } from "framer-motion";
@@ -106,7 +107,11 @@ export default function Notifications() {
           )}
         </div>
 
-        {loading && <div className="py-20 text-center mono text-sm text-[var(--color-muted-foreground)]">Loading...</div>}
+        {loading && (
+          <div className="py-20 text-center">
+            <LoadingIndicator label="Loading notifications" />
+          </div>
+        )}
 
         {!loading && notifications.length === 0 && (
           <div className="py-20 text-center border border-dashed border-[var(--color-border)]">

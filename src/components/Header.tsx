@@ -2,6 +2,7 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { useTheme } from "@/context/ThemeContext";
 import { useAuth } from "@/context/AuthContext";
+import LoadingIndicator from "@/components/LoadingIndicator";
 import { useEffect, useState } from "react";
 import {
   Moon,
@@ -273,7 +274,9 @@ export default function Header() {
                       </button>
                     </div>
                     {notificationsLoading && (
-                      <div className="px-3 py-6 mono text-xs text-[var(--color-muted-foreground)]">Loading...</div>
+                       <div className="px-3 py-6">
+                        <LoadingIndicator label="Loading notifications" size="sm" />
+                       </div>
                     )}
                     {!notificationsLoading && notifications.length === 0 && (
                       <div className="px-3 py-6 mono text-xs text-[var(--color-muted-foreground)]">No notifications yet</div>

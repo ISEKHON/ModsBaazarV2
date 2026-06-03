@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, resolveAssetUrl } from "@/lib/api";
 import { useRouter } from "next/router";
 import { motion } from "framer-motion";
+import LoadingIndicator from "@/components/LoadingIndicator";
 import { Download, Trophy, Users, BadgeCheck } from "lucide-react";
 import Head from "next/head";
 
@@ -90,7 +91,11 @@ export default function Modders() {
           </button>
         </div>
 
-        {loading && <div className="py-20 text-center mono text-sm text-[var(--color-muted-foreground)]">Loading modders...</div>}
+        {loading && (
+          <div className="py-20 text-center">
+            <LoadingIndicator label="Loading modders" />
+          </div>
+        )}
 
         {!loading && top3.length > 0 && (
           <div className="grid md:grid-cols-3 gap-4 mt-8">

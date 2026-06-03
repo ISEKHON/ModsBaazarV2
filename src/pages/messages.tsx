@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { useAuth } from "@/context/AuthContext";
 import { api, formatApiError, resolveAssetUrl } from "@/lib/api";
 import { connectSocket, onSocketEvent, emitSocketEvent } from "@/lib/socket";
+import LoadingIndicator from "@/components/LoadingIndicator";
 import { Send, ImagePlus, ArrowLeft, MessageSquare } from "lucide-react";
 import { motion } from "framer-motion";
 import Head from "next/head";
@@ -241,7 +242,11 @@ export default function Messages() {
               </div>
             )}
             <div className="flex-1 overflow-y-auto">
-              {loadingChats && <div className="p-4 mono text-xs text-[var(--color-muted-foreground)]">Loading...</div>}
+              {loadingChats && (
+                <div className="p-4">
+                  <LoadingIndicator label="Loading chats" size="sm" />
+                </div>
+              )}
               {!loadingChats && filteredChats.length === 0 && (
                 <div className="p-8 text-center">
                   <MessageSquare className="w-10 h-10 mx-auto text-[var(--color-muted-foreground)] mb-3" />

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import LoadingIndicator from "@/components/LoadingIndicator";
 import ModCard from "@/components/ModCard";
 import { Download, Package, Heart, MessageSquare, Calendar, Settings, Plus } from "lucide-react";
 import Head from "next/head";
@@ -25,7 +26,11 @@ export default function Dashboard() {
       .finally(() => setLoading(false));
   }, [user]);
 
-  if (!user) return <div className="mx-auto max-w-7xl px-4 py-16 mono text-sm text-[var(--color-muted-foreground)]" data-testid="dashboard-loading">Loading...</div>;
+  if (!user) return (
+    <div className="mx-auto max-w-7xl px-4 py-16" data-testid="dashboard-loading">
+      <LoadingIndicator label="Loading dashboard" />
+    </div>
+  );
 
   const totalDownloads = myMods.reduce((sum, m) => sum + (m.downloads || 0), 0);
   const totalLikes = myMods.reduce((sum, m) => sum + (m.likesCount || 0), 0);
@@ -67,7 +72,7 @@ export default function Dashboard() {
                 <Plus className="w-3.5 h-3.5" /> NEW MOD
               </button>
             </div>
-            {loading && <div className="mono text-xs text-[var(--color-muted-foreground)]">Loading mods...</div>}
+            {loading && <LoadingIndicator label="Loading mods" size="sm" />}
             {!loading && myMods.length === 0 ? (
               <div className="border border-dashed border-[var(--color-border)] p-8 text-center">
                 <div className="mono text-sm text-[var(--color-muted-foreground)]">You haven&apos;t uploaded any mods yet.</div>

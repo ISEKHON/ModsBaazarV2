@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import StatBlock from "@/components/StatBlock";
+import LoadingIndicator from "@/components/LoadingIndicator";
 import { Users, Download, Eye, Key, Package, Share2, Heart } from "lucide-react";
 import Head from "next/head";
 
@@ -8,7 +9,11 @@ export default function Stats() {
   const [s, setS] = useState<any>(null);
   useEffect(() => { api.get("/mods/stats").then((r) => setS(r.data)).catch(() => {}); }, []);
 
-  if (!s) return <div className="p-10 mono text-sm text-[var(--color-muted-foreground)]" data-testid="stats-loading">Loading stats...</div>;
+  if (!s) return (
+    <div className="p-10" data-testid="stats-loading">
+      <LoadingIndicator label="Loading stats" />
+    </div>
+  );
 
   return (
     <>

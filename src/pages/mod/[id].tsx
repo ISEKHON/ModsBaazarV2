@@ -4,6 +4,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { api, formatApiError, resolveAssetUrl } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import LoadingIndicator from "@/components/LoadingIndicator";
 import { toast } from "sonner";
 import {
   Download, Eye, Share2, Lock, Key, Calendar, User, Package, Tag, ArrowLeft,
@@ -187,7 +188,11 @@ export default function ModDetail() {
     setChatBusy(false);
   };
 
-  if (!mod) return <div className="mx-auto max-w-7xl px-4 py-16 mono text-sm text-[var(--color-muted-foreground)]" data-testid="mod-detail-loading">Loading...</div>;
+  if (!mod) return (
+    <div className="mx-auto max-w-7xl px-4 py-16" data-testid="mod-detail-loading">
+      <LoadingIndicator label="Loading mod" />
+    </div>
+  );
 
   const gallery = [resolveAssetUrl(mod.iconUrl), ...(mod.gallery || []).map(resolveAssetUrl)].filter(Boolean);
   const isFree = mod.accessType === "free";
@@ -215,7 +220,8 @@ export default function ModDetail() {
               <img src={gallery[selectedImg]} alt={mod.title} className="w-full h-full object-cover" />
               <div className="absolute top-3 left-3 flex gap-2">
                 <span className="heading text-xs px-2 py-1 bg-[var(--color-background)]/90 border border-[var(--color-border)]">{mod.game.toUpperCase()}</span>
-                {isPaid && <span className="heading text-xs px-2 py-1 text-black stripe-tape"><Lock className="w-3 h-3 inline mr-1" />PAID</span>}
+                {mod.featured && <span className="heading text-xs px-2 py-1 badge-featured border border-white/20">FEATURED</span>}
+                {isPaid && <span className="heading text-xs px-2 py-1 badge-paid"><MessageSquare className="w-3 h-3 inline mr-1" />PAID</span>}
                 {isCode && <span className="heading text-xs px-2 py-1 bg-[hsl(45,80%,40%)] text-black"><Key className="w-3 h-3 inline mr-1" />CODE</span>}
                 {isFree && <span className="heading text-xs px-2 py-1 bg-[hsl(142,50%,30%)] text-white">FREE</span>}
               </div>

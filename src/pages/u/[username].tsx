@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { api, resolveAssetUrl } from "@/lib/api";
 import ModCard from "@/components/ModCard";
+import LoadingIndicator from "@/components/LoadingIndicator";
 import { motion } from "framer-motion";
 import { BadgeCheck, Download, Heart, Package, Calendar, Users } from "lucide-react";
 import Head from "next/head";
@@ -45,7 +46,7 @@ export default function UserProfile() {
     (async () => {
       try {
         const { data } = await api.get(`/users/${username}`);
-        setProfile(data);
+        setProfile(data.user ?? data);
         const modsRes = await api.get(`/users/${username}/mods`);
         setMods(modsRes.data.mods || []);
       } catch (err: any) {
@@ -61,7 +62,7 @@ export default function UserProfile() {
 
   if (loading) return (
     <div className="min-h-[60vh] flex items-center justify-center">
-      <div className="mono text-sm text-[var(--color-muted-foreground)]">Loading profile...</div>
+      <LoadingIndicator label="Loading profile" />
     </div>
   );
 
@@ -126,7 +127,7 @@ export default function UserProfile() {
               </div>
               <div className="flex items-center gap-1.5">
                 <Calendar className="w-4 h-4 text-[var(--color-muted-foreground)]" />
-                Member since {new Date(profile.createdAt).toLocaleDateString("en-US", { month: "short", year: "numeric" })}
+                Member since {formatMemberSince(profile.createdAt)}
               </div>
             </div>
           </div>
@@ -151,4 +152,11 @@ function formatNumber(n: number) {
   if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
   if (n >= 1000) return (n / 1000).toFixed(1) + "K";
   return String(n);
+}
+
+function formatMemberSince(value?: string) {
+  if (!value) return "-";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "-";
+  return parsed.toLocaleDateString("en-US", { month: "short", year: "numeric" });
 }

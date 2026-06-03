@@ -102,15 +102,18 @@ export default function Home() {
               {Array.from({ length: 2 }).map((_, k) => (
                 <div key={k} className="flex gap-12 pr-12">
                   {marqueeMods.length > 0 ? (
-                    marqueeMods.map((mod: any) => (
-                      <span key={`${mod.id}-${k}`} className="flex items-center gap-12">
+                    marqueeMods.map((mod: any, i: number) => (
+                      <span key={`${mod.id}-${k}-${i}`} className="flex items-center gap-12">
                         <span>{mod.title}</span>
                         <span className="text-[var(--color-primary)]">●</span>
                       </span>
                     ))
                   ) : (
                     <>
-                      <span>TOP MODS LOADING</span>
+                      <span className="inline-flex items-center gap-2">
+                        <span className="spinner spinner-sm" aria-hidden="true" />
+                        <span>FETCHING TOP MODS</span>
+                      </span>
                       <span className="text-[var(--color-primary)]">●</span>
                       <span>CURATED DROPS INCOMING</span>
                       <span className="text-[var(--color-primary)]">●</span>

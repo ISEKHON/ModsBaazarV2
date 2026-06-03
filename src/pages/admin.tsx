@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/router";
 import { api, formatApiError, resolveAssetUrl } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import LoadingIndicator from "@/components/LoadingIndicator";
 import { toast } from "sonner";
 import {
   Edit, Trash, Plus, Star, Copy, X, Users, Package, Activity,
@@ -165,7 +166,7 @@ function BanDialog({
 
 // ━━━ Main Admin Page ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 export default function Admin() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("dashboard");
   const [mods, setMods] = useState<any[]>([]);
@@ -187,16 +188,65 @@ export default function Admin() {
   // Ban dialog
   const [banDialog, setBanDialog] = useState<{ open: boolean; user: any }>({ open: false, user: null });
 
-  useEffect(() => {
-    if (!user) router.push("/login");
-    else if (user && user.role !== "admin" && user.role !== "owner") router.push("/");
-    else if (user) refresh();
-  }, [user]);
+  const updateUserInList = useCallback((updatedUser: any) => {
+    setUsers((prev) => prev.map((u: any) => (u.id === updatedUser.id ? { ...u, ...updatedUser } : u)));
+  }, []);
 
-  useEffect(() => {
-    document.body.style.overflow = modalOpen ? "hidden" : "";
-    return () => { document.body.style.overflow = ""; };
-  }, [modalOpen]);
+  const updateModInList = useCallback((updatedMod: any) => {
+    setMods((prev) => prev.map((m: any) => (m.id === updatedMod.id ? { ...m, ...updatedMod } : m)));
+  }, []);
+
+  const upsertModInList = useCallback((mod: any) => {
+    setMods((prev) => {
+      const idx = prev.findIndex((m: any) => m.id === mod.id);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = { ...next[idx], ...mod };
+        return next;
+      }
+      return [mod, ...prev];
+    });
+  }, []);
+
+  const updateStatsForModChange = useCallback((prevMod: any | null, nextMod: any | null) => {
+    setStats((prev: any) => {
+      if (!prev) return prev;
+      const next = { ...prev };
+      const wasPublished = prevMod?.status === "published";
+      const isPublished = nextMod?.status === "published";
+
+      const bumpAccess = (accessType: string | undefined, delta: number) => {
+        if (!accessType) return;
+        if (accessType === "free") next.freeMods = Math.max(0, (next.freeMods ?? 0) + delta);
+        if (accessType === "paid") next.paidMods = Math.max(0, (next.paidMods ?? 0) + delta);
+        if (accessType === "unlock_code") next.codeMods = Math.max(0, (next.codeMods ?? 0) + delta);
+      };
+
+      if (wasPublished && !isPublished) {
+        next.totalMods = Math.max(0, (next.totalMods ?? 0) - 1);
+        bumpAccess(prevMod?.accessType, -1);
+      }
+
+      if (!wasPublished && isPublished) {
+        next.totalMods = (next.totalMods ?? 0) + 1;
+        bumpAccess(nextMod?.accessType, 1);
+      }
+
+      if (wasPublished && isPublished && prevMod?.accessType !== nextMod?.accessType) {
+        bumpAccess(prevMod?.accessType, -1);
+        bumpAccess(nextMod?.accessType, 1);
+      }
+
+      return next;
+    });
+  }, []);
+
+  const decrementTotalUsers = useCallback(() => {
+    setStats((prev: any) => {
+      if (!prev) return prev;
+      return { ...prev, totalUsers: Math.max(0, (prev.totalUsers ?? 0) - 1) };
+    });
+  }, []);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -221,6 +271,18 @@ export default function Admin() {
     }
   }, []);
 
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user) router.push("/login");
+    else if (user.role !== "admin" && user.role !== "owner") router.push("/");
+    else refresh();
+  }, [user, authLoading, refresh, router]);
+
+  useEffect(() => {
+    document.body.style.overflow = modalOpen ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [modalOpen]);
+
   const openConfirm = (title: string, message: string, onConfirm: () => void, danger = true) => {
     setConfirm({ open: true, title, message, danger, onConfirm });
   };
@@ -238,13 +300,18 @@ export default function Admin() {
       try {
         await api.delete(`/mods/${mod.id}`);
         setMods((prev) => prev.filter((m: any) => m.id !== mod.id));
+        updateStatsForModChange(mod, { ...mod, status: "deleted" });
         toast.success("Mod deleted");
       }
       catch (e: any) { toast.error(formatApiError(e)); }
     });
   };
   const featureMod = async (id: number) => {
-    try { await api.put(`/mods/admin/${id}/feature`); toast.success("Featured toggled"); refresh(); }
+    try {
+      const { data } = await api.put(`/mods/admin/${id}/feature`);
+      updateModInList(data);
+      toast.success("Featured toggled");
+    }
     catch (e: any) { toast.error(formatApiError(e)); }
   };
 
@@ -254,7 +321,11 @@ export default function Admin() {
     if (u.status === "banned") {
       openConfirm("UNBAN USER", `Restore access for "${userName}"?`, async () => {
         closeConfirm();
-        try { await api.put(`/users/admin/${u.id}/unban`); toast.success("User unbanned"); refresh(); }
+        try {
+          const { data } = await api.put(`/users/admin/${u.id}/unban`);
+          updateUserInList(data.user || data);
+          toast.success("User unbanned");
+        }
         catch (e: any) { toast.error(formatApiError(e)); }
       }, false);
     } else {
@@ -266,9 +337,9 @@ export default function Admin() {
     const userName = u.displayName || u.username;
     setBanDialog({ open: false, user: null });
     try {
-      await api.put(`/users/admin/${u.id}/ban`, { reason });
+      const { data } = await api.put(`/users/admin/${u.id}/ban`, { reason });
+      updateUserInList(data.user || data);
       toast.success(`${userName} banned — ${reason}`);
-      refresh();
     } catch (e: any) { toast.error(formatApiError(e)); }
   };
   const promoteUser = (u: any) => {
@@ -278,7 +349,11 @@ export default function Admin() {
       isAdmin ? `Remove admin privileges from "${userName}"?` : `Grant admin privileges to "${userName}"? They'll have full control.`,
       async () => {
         closeConfirm();
-        try { await api.put(`/users/admin/${u.id}/role`, { role: isAdmin ? "member" : "admin" }); toast.success(isAdmin ? "Admin removed" : "Promoted to admin"); refresh(); }
+        try {
+          const { data } = await api.put(`/users/admin/${u.id}/role`, { role: isAdmin ? "member" : "admin" });
+          updateUserInList(data.user || data);
+          toast.success(isAdmin ? "Admin removed" : "Promoted to admin");
+        }
         catch (e: any) { toast.error(formatApiError(e)); }
       }, false);
   };
@@ -290,9 +365,9 @@ export default function Admin() {
       async () => {
         closeConfirm();
         try {
-          await api.put(`/users/admin/${u.id}/role`, { role: isModder ? "member" : "modder" });
+          const { data } = await api.put(`/users/admin/${u.id}/role`, { role: isModder ? "member" : "modder" });
+          updateUserInList(data.user || data);
           toast.success(isModder ? "Modder removed" : "Promoted to modder");
-          refresh();
         } catch (e: any) { toast.error(formatApiError(e)); }
       }, false);
   };
@@ -300,12 +375,23 @@ export default function Admin() {
     const userName = u.displayName || u.username;
     openConfirm("DELETE USER", `Permanently delete "${userName}" (${u.email})?`, async () => {
       closeConfirm();
-      try { await api.delete(`/users/admin/${u.id}`); toast.success("User deleted"); refresh(); }
+      try {
+        await api.delete(`/users/admin/${u.id}`);
+        setUsers((prev) => prev.filter((userEntry: any) => userEntry.id !== u.id));
+        decrementTotalUsers();
+        toast.success("User deleted");
+      }
       catch (e: any) { toast.error(formatApiError(e)); }
     });
   };
 
-  if (!user || (user.role !== "admin" && user.role !== "owner")) return <div className="p-10">Checking access...</div>;
+  if (!user || (user.role !== "admin" && user.role !== "owner")) {
+    return (
+      <div className="p-10">
+        <LoadingIndicator label="Checking access" />
+      </div>
+    );
+  }
 
   const visibleMods = mods.filter((m: any) => m.status !== "deleted");
   const openReports = reports.filter(r => r.status === "open").length;
@@ -345,8 +431,7 @@ export default function Admin() {
         <div className="mt-6">
           {loading && (
             <div className="border border-[var(--color-border)] bg-[var(--color-card)] p-6 animate-pulse">
-              <div className="mono text-xs tracking-widest text-[var(--color-muted-foreground)]">LOADING ADMIN DATA</div>
-              <div className="heading text-lg mt-2">Please wait...</div>
+              <LoadingIndicator label="Loading admin data" />
             </div>
           )}
           {!loading && tab === "dashboard" && <DashboardTab stats={stats} mods={visibleMods} users={users} activity={activity} reports={reports} setTab={setTab} />}
@@ -367,7 +452,19 @@ export default function Admin() {
               <button onClick={() => setModalOpen(false)} className="p-1 hover:text-[var(--color-primary)] transition-colors"><X className="w-5 h-5" /></button>
             </div>
             <div className="overflow-y-auto flex-1 p-5">
-              {editing && <ModForm initial={editing} onClose={() => setModalOpen(false)} onSaved={() => { setModalOpen(false); refresh(); }} />}
+              {editing && (
+                <ModForm
+                  initial={editing}
+                  onClose={() => setModalOpen(false)}
+                  onSaved={(savedMod) => {
+                    const prevMod = mods.find((m: any) => m.id === savedMod.id) || null;
+                    upsertModInList(savedMod);
+                    updateStatsForModChange(prevMod, savedMod);
+                    setModalOpen(false);
+                    setEditing(null);
+                  }}
+                />
+              )}
             </div>
           </div>
         </div>
@@ -865,7 +962,7 @@ function Empty({ text }: { text: string }) {
 }
 
 // ━━━ MOD FORM ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function ModForm({ initial, onClose, onSaved }: { initial: any; onClose: () => void; onSaved: () => void }) {
+function ModForm({ initial, onClose, onSaved }: { initial: any; onClose: () => void; onSaved: (mod: any) => void }) {
   const [f, setF] = useState(() => normalizeModForm(initial));
   const [busy, setBusy] = useState(false);
   const isEdit = !!initial.id;
@@ -891,10 +988,11 @@ function ModForm({ initial, onClose, onSaved }: { initial: any; onClose: () => v
       fileSizeMb: parseFloat(f.fileSizeMb) || 0,
     };
     try {
-      if (isEdit) await api.put(`/mods/${f.id}`, body);
-      else await api.post("/mods", body);
+      const { data } = isEdit
+        ? await api.put(`/mods/${f.id}`, body)
+        : await api.post("/mods", body);
       toast.success(isEdit ? "Mod updated" : "Mod created");
-      onSaved();
+      onSaved(data);
     } catch (err: any) {
       toast.error(formatApiError(err));
     } finally { setBusy(false); }
