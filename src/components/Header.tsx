@@ -22,18 +22,44 @@ import {
 import { api, resolveAssetUrl } from "@/lib/api";
 import { onSocketEvent } from "@/lib/socket";
 
+interface Notification {
+  id: string;
+  title: string;
+  message: string;
+  link: string | null;
+  isRead: boolean;
+  createdAt: string;
+}
+
+function timeAgo(value: string) {
+  const date = new Date(value);
+  const diffMs = Date.now() - date.getTime();
+  const diffSec = Math.max(0, Math.floor(diffMs / 1000));
+  if (diffSec < 60) return "less than a minute ago";
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin} minute${diffMin === 1 ? "" : "s"} ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr} hour${diffHr === 1 ? "" : "s"} ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  return `${diffDay} day${diffDay === 1 ? "" : "s"} ago`;
+}
+
 export default function Header() {
   const { theme, toggle } = useTheme();
   const { user, logout, isAdmin, isModder } = useAuth();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
   useEffect(() => {
     setMobileOpen(false);
     setDropdownOpen(false);
+    setNotificationsOpen(false);
   }, [router.pathname]);
 
   // Fetch unread counts on login
@@ -63,8 +89,9 @@ export default function Header() {
       .catch(() => {});
 
     // Real-time updates
-    const unsubNotif = onSocketEvent("notification:new", () => {
+    const unsubNotif = onSocketEvent<Notification>("notification:new", (notif) => {
       setUnreadNotifications((prev) => prev + 1);
+      setNotifications((prev) => [notif, ...prev].slice(0, 5));
     });
     const unsubChat = onSocketEvent("chat:message", () => {
       // Only increment if not on messages page
@@ -78,6 +105,52 @@ export default function Header() {
       unsubChat();
     };
   }, [user]);
+
+  const loadNotifications = async () => {
+    if (!user) return;
+    setNotificationsLoading(true);
+    try {
+      const { data } = await api.get("/notifications", { params: { page: 1, limit: 5 } });
+      setNotifications(data.notifications || []);
+      if (typeof data.unreadCount === "number") {
+        setUnreadNotifications(data.unreadCount);
+      }
+    } catch {}
+    setNotificationsLoading(false);
+  };
+
+  const markAllRead = async () => {
+    try {
+      await api.put("/notifications/read-all");
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      setUnreadNotifications(0);
+    } catch {}
+  };
+
+  const markOneRead = async (id: string) => {
+    try {
+      await api.put(`/notifications/${id}/read`);
+      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
+      setUnreadNotifications((prev) => Math.max(0, prev - 1));
+    } catch {}
+  };
+
+  const clickNotification = async (notif: Notification) => {
+    if (!notif.isRead) {
+      await markOneRead(notif.id);
+    }
+    if (notif.link) {
+      router.push(notif.link);
+    }
+  };
+
+  const toggleNotifications = async () => {
+    const next = !notificationsOpen;
+    setNotificationsOpen(next);
+    if (next && notifications.length === 0) {
+      await loadNotifications();
+    }
+  };
 
   const navLinks = [
     { href: "/", label: "Home" },
@@ -173,19 +246,83 @@ export default function Header() {
               </button>
 
               {/* Notification bell with badge */}
-              <button
-                onClick={() => router.push("/notifications")}
-                className="relative p-2 border border-transparent hover:border-[var(--color-border)] transition-colors"
-                aria-label="Notifications"
-                data-testid="notifications-btn"
-              >
-                <Bell className="w-4 h-4" />
-                {unreadNotifications > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-[var(--color-destructive)] text-white text-[9px] mono flex items-center justify-center">
-                    {unreadNotifications > 9 ? "9+" : unreadNotifications}
-                  </span>
+              <div className="relative">
+                <button
+                  onClick={toggleNotifications}
+                  className="relative p-2 border border-transparent hover:border-[var(--color-border)] transition-colors"
+                  aria-label="Notifications"
+                  data-testid="notifications-btn"
+                >
+                  <Bell className="w-4 h-4" />
+                  {unreadNotifications > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-[var(--color-destructive)] text-white text-[9px] mono flex items-center justify-center">
+                      {unreadNotifications > 9 ? "9+" : unreadNotifications}
+                    </span>
+                  )}
+                </button>
+                {notificationsOpen && (
+                  <div className="absolute right-0 top-full mt-2 w-80 border border-[var(--color-border)] bg-[var(--color-card)] shadow-lg z-50">
+                    <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--color-border)]">
+                      <div className="heading text-sm">Notifications</div>
+                      <button
+                        onClick={markAllRead}
+                        className="mono text-[10px] text-[var(--color-primary)] hover:opacity-80"
+                        disabled={unreadNotifications === 0}
+                      >
+                        Mark all read
+                      </button>
+                    </div>
+                    {notificationsLoading && (
+                      <div className="px-3 py-6 mono text-xs text-[var(--color-muted-foreground)]">Loading...</div>
+                    )}
+                    {!notificationsLoading && notifications.length === 0 && (
+                      <div className="px-3 py-6 mono text-xs text-[var(--color-muted-foreground)]">No notifications yet</div>
+                    )}
+                    <div className="max-h-80 overflow-y-auto">
+                      {notifications.map((notif) => (
+                        <div
+                          key={notif.id}
+                          className={`px-3 py-2 border-b border-[var(--color-border)] ${
+                            notif.isRead ? "bg-transparent" : "bg-[var(--color-primary)]/5"
+                          }`}
+                        >
+                          <div className="heading text-xs">{notif.title}</div>
+                          <div className="text-[11px] text-[var(--color-muted-foreground)] line-clamp-2 mt-0.5">
+                            {notif.message}
+                          </div>
+                          <div className="flex items-center justify-between mt-1">
+                            <span className="mono text-[10px] text-[var(--color-muted-foreground)]">
+                              {timeAgo(notif.createdAt)}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              {!notif.isRead && (
+                                <button
+                                  onClick={() => markOneRead(notif.id)}
+                                  className="mono text-[10px] text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)]"
+                                >
+                                  Mark read
+                                </button>
+                              )}
+                              <button
+                                onClick={() => clickNotification(notif)}
+                                className="mono text-[10px] text-[var(--color-primary)] hover:opacity-80"
+                              >
+                                View
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => router.push("/notifications")}
+                      className="w-full text-center py-2 mono text-xs text-[var(--color-primary)] hover:bg-[var(--color-muted)] transition-colors"
+                    >
+                      View all notifications
+                    </button>
+                  </div>
                 )}
-              </button>
+              </div>
 
               {/* User dropdown */}
               <div className="relative">

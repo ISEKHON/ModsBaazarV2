@@ -34,6 +34,10 @@ export default function Home() {
     })();
   }, []);
 
+  const marqueeMods = [...featured, ...trending]
+    .filter((mod) => mod?.title)
+    .slice(0, 10);
+
   return (
     <>
       <Head>
@@ -97,16 +101,23 @@ export default function Home() {
             <div className="flex gap-12 animate-marquee py-3 whitespace-nowrap mono text-xs tracking-widest">
               {Array.from({ length: 2 }).map((_, k) => (
                 <div key={k} className="flex gap-12 pr-12">
-                  <span>FS25 PATCH 1.3 COMPATIBLE</span>
-                  <span className="text-[var(--color-primary)]">●</span>
-                  <span>JOHN DEERE 8R PACK — JUST DROPPED</span>
-                  <span className="text-[var(--color-primary)]">●</span>
-                  <span>MIDWEST MAP v1.2 UPDATE</span>
-                  <span className="text-[var(--color-primary)]">●</span>
-                  <span>UNLOCK CODES ARE SINGLE-USE</span>
-                  <span className="text-[var(--color-primary)]">●</span>
-                  <span>SUBSCRIBE FOR MODDER DROPS</span>
-                  <span className="text-[var(--color-primary)]">●</span>
+                  {marqueeMods.length > 0 ? (
+                    marqueeMods.map((mod: any) => (
+                      <span key={`${mod.id}-${k}`} className="flex items-center gap-12">
+                        <span>{mod.title}</span>
+                        <span className="text-[var(--color-primary)]">●</span>
+                      </span>
+                    ))
+                  ) : (
+                    <>
+                      <span>TOP MODS LOADING</span>
+                      <span className="text-[var(--color-primary)]">●</span>
+                      <span>CURATED DROPS INCOMING</span>
+                      <span className="text-[var(--color-primary)]">●</span>
+                      <span>FRESH UPDATES THIS WEEK</span>
+                      <span className="text-[var(--color-primary)]">●</span>
+                    </>
+                  )}
                 </div>
               ))}
             </div>

@@ -3,7 +3,7 @@ import { useRouter } from "next/router";
 import { useAuth } from "@/context/AuthContext";
 import { api, formatApiError, resolveAssetUrl } from "@/lib/api";
 import { connectSocket, onSocketEvent, emitSocketEvent } from "@/lib/socket";
-import { Send, ImagePlus, ArrowLeft, MessageSquare, User } from "lucide-react";
+import { Send, ImagePlus, ArrowLeft, MessageSquare } from "lucide-react";
 import { motion } from "framer-motion";
 import Head from "next/head";
 
@@ -47,6 +47,7 @@ export default function Messages() {
   const [typingUsers, setTypingUsers] = useState<Record<string, boolean>>({});
   const [onlineUsers, setOnlineUsers] = useState<Record<string, boolean>>({});
   const fileInput = useRef<HTMLInputElement>(null);
+  const fallbackAvatar = "/user-placeholder.svg";
 
   useEffect(() => {
     if (!authLoading && !user) router.push("/login");
@@ -135,7 +136,11 @@ export default function Messages() {
     return unsub;
   }, []);
 
+  const isPrivileged = user?.role === "admin" || user?.role === "owner";
+  const isModderOrAbove = user?.role === "modder" || isPrivileged;
+
   const updateChatStatus = async (chatId: string, status: "active" | "paid" | "archived") => {
+    if (!isModderOrAbove) return;
     try {
       await api.put(`/chats/${chatId}/status`, { status });
       setChats((prev) => prev.map((c) => (c.id === chatId ? { ...c, status } : c)));
@@ -173,13 +178,34 @@ export default function Messages() {
   const otherUserId = activeChatData?.otherUser.id;
   const isOtherTyping = otherUserId ? Boolean(typingUsers[otherUserId]) : false;
   const isOtherOnline = otherUserId ? Boolean(onlineUsers[otherUserId]) : false;
+  const canManageActiveChat =
+    Boolean(activeChatData) && (isPrivileged || activeChatData?.modder?.id === user?.id);
 
-  const filteredChats = chats.filter((chat) => {
-    const status = chat.status || "active";
-    if (statusTab === "unpaid") return status === "active";
-    if (statusTab === "paid") return status === "paid";
-    return status === "archived";
-  });
+  const statusCounts = chats.reduce(
+    (acc, chat) => {
+      const status = chat.status || "active";
+      if (status === "active") acc.unpaid += 1;
+      if (status === "paid") acc.paid += 1;
+      if (status === "archived") acc.archived += 1;
+      return acc;
+    },
+    { unpaid: 0, paid: 0, archived: 0 }
+  );
+
+  const filteredChats = isModderOrAbove
+    ? chats.filter((chat) => {
+        const status = chat.status || "active";
+        if (statusTab === "unpaid") return status === "active";
+        if (statusTab === "paid") return status === "paid";
+        return status === "archived";
+      })
+    : chats.filter((chat) => (chat.status || "active") !== "archived");
+
+  useEffect(() => {
+    if (!isModderOrAbove && activeChatData?.status === "archived") {
+      setActiveChat(null);
+    }
+  }, [activeChatData?.status, isModderOrAbove]);
 
   if (!user) return null;
 
@@ -193,25 +219,27 @@ export default function Messages() {
             <div className="p-4 border-b border-[var(--color-border)]">
               <h1 className="heading text-lg">MESSAGES</h1>
             </div>
-            <div className="p-3 border-b border-[var(--color-border)] flex gap-2">
-              {([
-                { key: "unpaid", label: "UNPAID" },
-                { key: "paid", label: "PAID" },
-                { key: "archived", label: "ARCHIVED" },
-              ] as const).map((tab) => (
-                <button
-                  key={tab.key}
-                  onClick={() => setStatusTab(tab.key)}
-                  className={`mono text-[10px] px-2 py-1 border ${
-                    statusTab === tab.key
-                      ? "border-[var(--color-primary)] text-[var(--color-primary)]"
-                      : "border-[var(--color-border)] text-[var(--color-muted-foreground)] hover:border-[var(--color-primary)]/60"
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
+            {isModderOrAbove && (
+              <div className="p-3 border-b border-[var(--color-border)] flex gap-2">
+                {([
+                  { key: "unpaid", label: "UNPAID", count: statusCounts.unpaid },
+                  { key: "paid", label: "PAID", count: statusCounts.paid },
+                  { key: "archived", label: "ARCHIVED", count: statusCounts.archived },
+                ] as const).map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setStatusTab(tab.key)}
+                    className={`mono text-[10px] px-2 py-1 border ${
+                      statusTab === tab.key
+                        ? "border-[var(--color-primary)] text-[var(--color-primary)]"
+                        : "border-[var(--color-border)] text-[var(--color-muted-foreground)] hover:border-[var(--color-primary)]/60"
+                    }`}
+                  >
+                    {tab.label} ({tab.count})
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="flex-1 overflow-y-auto">
               {loadingChats && <div className="p-4 mono text-xs text-[var(--color-muted-foreground)]">Loading...</div>}
               {!loadingChats && filteredChats.length === 0 && (
@@ -234,17 +262,11 @@ export default function Messages() {
                       alt=""
                       className="w-12 h-12 object-cover border border-[var(--color-border)]"
                     />
-                    {chat.otherUser.avatarUrl ? (
-                      <img
-                        src={resolveAssetUrl(chat.otherUser.avatarUrl)}
-                        alt=""
-                        className="absolute -bottom-1 -right-1 w-5 h-5 object-cover border border-[var(--color-border)] bg-[var(--color-background)]"
-                      />
-                    ) : (
-                      <div className="absolute -bottom-1 -right-1 w-5 h-5 border border-[var(--color-border)] bg-[var(--color-background)] flex items-center justify-center">
-                        <User className="w-3 h-3 text-[var(--color-muted-foreground)]" />
-                      </div>
-                    )}
+                    <img
+                      src={resolveAssetUrl(chat.otherUser.avatarUrl) || fallbackAvatar}
+                      alt=""
+                      className="absolute -bottom-1 -right-1 w-5 h-5 object-cover border border-[var(--color-border)] bg-[var(--color-background)]"
+                    />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-start">
@@ -293,17 +315,11 @@ export default function Messages() {
                       alt=""
                       className="w-9 h-9 object-cover border border-[var(--color-border)]"
                     />
-                    {activeChatData?.otherUser.avatarUrl ? (
-                      <img
-                        src={resolveAssetUrl(activeChatData.otherUser.avatarUrl)}
-                        alt=""
-                        className="absolute -bottom-1 -right-1 w-4 h-4 object-cover border border-[var(--color-border)] bg-[var(--color-background)]"
-                      />
-                    ) : (
-                      <div className="absolute -bottom-1 -right-1 w-4 h-4 border border-[var(--color-border)] bg-[var(--color-background)] flex items-center justify-center">
-                        <User className="w-2.5 h-2.5 text-[var(--color-muted-foreground)]" />
-                      </div>
-                    )}
+                    <img
+                      src={resolveAssetUrl(activeChatData?.otherUser.avatarUrl) || fallbackAvatar}
+                      alt=""
+                      className="absolute -bottom-1 -right-1 w-4 h-4 object-cover border border-[var(--color-border)] bg-[var(--color-background)]"
+                    />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="heading text-sm truncate flex items-center gap-2">
@@ -316,24 +332,26 @@ export default function Messages() {
                     </div>
                     <div className="mono text-[10px] text-[var(--color-muted-foreground)] truncate">{activeChatData?.mod.title}</div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {activeChatData?.status !== "paid" && (
-                      <button
-                        onClick={() => updateChatStatus(activeChatData!.id, "paid")}
-                        className="mono text-[9px] px-2 py-0.5 border border-[hsl(142,50%,40%)] text-[hsl(142,50%,40%)] hover:opacity-80"
-                      >
-                        MARK PAID
-                      </button>
-                    )}
-                    {activeChatData?.status !== "archived" && (
-                      <button
-                        onClick={() => updateChatStatus(activeChatData!.id, "archived")}
-                        className="mono text-[9px] px-2 py-0.5 border border-[hsl(45,80%,40%)] text-[hsl(45,80%,40%)] hover:opacity-80"
-                      >
-                        ARCHIVE
-                      </button>
-                    )}
-                  </div>
+                  {canManageActiveChat && (
+                    <div className="flex items-center gap-2">
+                      {activeChatData?.status !== "paid" && (
+                        <button
+                          onClick={() => updateChatStatus(activeChatData!.id, "paid")}
+                          className="mono text-[9px] px-2 py-0.5 border border-[hsl(142,50%,40%)] text-[hsl(142,50%,40%)] hover:opacity-80"
+                        >
+                          MARK PAID
+                        </button>
+                      )}
+                      {activeChatData?.status !== "archived" && (
+                        <button
+                          onClick={() => updateChatStatus(activeChatData!.id, "archived")}
+                          className="mono text-[9px] px-2 py-0.5 border border-[hsl(45,80%,40%)] text-[hsl(45,80%,40%)] hover:opacity-80"
+                        >
+                          ARCHIVE
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Messages */}
@@ -348,7 +366,7 @@ export default function Messages() {
                       <div className={`max-w-[70%] flex gap-2 ${msg.senderId === user.id ? "flex-row-reverse" : "flex-row"}`}>
                         {msg.senderId !== user.id && (
                           <img
-                            src={resolveAssetUrl(msg.sender.avatarUrl) || "/placeholder.png"}
+                            src={resolveAssetUrl(msg.sender.avatarUrl) || fallbackAvatar}
                             alt=""
                             className="w-6 h-6 object-cover border border-[var(--color-border)] self-end"
                           />

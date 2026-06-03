@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Download, Eye, Lock, Tag, Heart, Key, MessageSquare } from "lucide-react";
+import { Download, Eye, Tag, Heart, Key, MessageSquare, Star } from "lucide-react";
 import { resolveAssetUrl } from "@/lib/api";
 
 interface ModCardProps {
@@ -17,6 +17,8 @@ interface ModCardProps {
     views?: number;
     downloads?: number;
     likesCount?: number;
+    avgRating?: number;
+    featured?: boolean;
     author?: {
       id: string;
       username: string;
@@ -33,7 +35,7 @@ export default function ModCard({ mod, index = 0 }: ModCardProps) {
     switch (mod.accessType) {
       case "paid":
         return (
-          <span className="heading text-[10px] px-2 py-0.5 text-black stripe-tape font-bold">
+          <span className="heading text-[10px] px-2 py-0.5 badge-paid font-bold">
             <MessageSquare className="w-3 h-3 inline -mt-0.5 mr-1" />PAID
           </span>
         );
@@ -70,6 +72,11 @@ export default function ModCard({ mod, index = 0 }: ModCardProps) {
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
           />
           <div className="absolute top-2 left-2 flex gap-1">
+            {mod.featured && (
+              <span className="heading text-[10px] px-2 py-0.5 badge-featured border border-white/20">
+                FEATURED
+              </span>
+            )}
             <span className="heading text-[10px] px-2 py-0.5 bg-[var(--color-background)]/90 text-[var(--color-foreground)] border border-[var(--color-border)]">
               {mod.game.toUpperCase()}
             </span>
@@ -99,6 +106,7 @@ export default function ModCard({ mod, index = 0 }: ModCardProps) {
             <div className="flex items-center gap-3 text-[11px] mono text-[var(--color-muted-foreground)]">
               <span className="flex items-center gap-1"><Eye className="w-3 h-3" />{formatNumber(mod.views)}</span>
               <span className="flex items-center gap-1"><Download className="w-3 h-3" />{formatNumber(mod.downloads)}</span>
+              <span className="flex items-center gap-1"><Star className="w-3 h-3" />{formatRating(mod.avgRating)}</span>
               <span className="flex items-center gap-1"><Heart className="w-3 h-3" />{formatNumber(mod.likesCount)}</span>
             </div>
             {mod.author ? (
@@ -119,4 +127,9 @@ function formatNumber(n?: number) {
   if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
   if (n >= 1000) return (n / 1000).toFixed(1) + "K";
   return String(n);
+}
+
+function formatRating(n?: number) {
+  if (n == null || Number.isNaN(n)) return "0.0";
+  return n.toFixed(1);
 }
