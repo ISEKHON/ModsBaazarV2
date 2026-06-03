@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import Head from "next/head";
 
 export default function Login() {
-  const { login, formatApiErrorDetail } = useAuth();
+  const { login, formatApiError } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -20,7 +20,12 @@ export default function Login() {
       toast.success("Welcome back");
       router.push("/dashboard");
     } catch (err: any) {
-      toast.error(formatApiErrorDetail(err.response?.data?.detail) || "Login failed");
+      if (err.response?.status === 403) {
+        const reason = err.response?.data?.reason || "Unknown reason";
+        router.push(`/banned?reason=${encodeURIComponent(reason)}`);
+        return;
+      }
+      toast.error(formatApiError(err));
     } finally { setBusy(false); }
   };
 

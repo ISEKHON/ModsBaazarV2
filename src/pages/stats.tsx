@@ -1,14 +1,14 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import StatBlock from "@/components/StatBlock";
-import { Users, Download, Eye, Unlock, Package, Share2 } from "lucide-react";
+import { Users, Download, Eye, Key, Package, Share2, Heart } from "lucide-react";
 import Head from "next/head";
 
 export default function Stats() {
   const [s, setS] = useState<any>(null);
-  useEffect(() => { api.get("/stats").then((r) => setS(r.data)); }, []);
+  useEffect(() => { api.get("/mods/stats").then((r) => setS(r.data)).catch(() => {}); }, []);
 
-  if (!s) return <div className="p-10" data-testid="stats-loading">Loading...</div>;
+  if (!s) return <div className="p-10 mono text-sm text-[var(--color-muted-foreground)]" data-testid="stats-loading">Loading stats...</div>;
 
   return (
     <>
@@ -17,15 +17,14 @@ export default function Stats() {
         <div className="mono text-xs tracking-widest text-[var(--color-muted-foreground)]">TELEMETRY</div>
         <h1 className="heading text-4xl md:text-5xl">PLATFORM STATS</h1>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-8">
-          <StatBlock label="Total Users" value={s.total_users} icon={Users} big />
-          <StatBlock label="Active (7d)" value={s.active_users} icon={Eye} big />
-          <StatBlock label="Total Mods" value={s.total_mods} icon={Package} big accent />
-          <StatBlock label="Total Downloads" value={s.total_downloads.toLocaleString()} icon={Download} big />
-          <StatBlock label="Total Views" value={s.total_views.toLocaleString()} icon={Eye} big />
-          <StatBlock label="Total Shares" value={s.total_shares.toLocaleString()} icon={Share2} big />
-          <StatBlock label="Free Mods" value={s.free_mods} />
-          <StatBlock label="Paid Mods" value={s.paid_mods} />
-          <StatBlock label="Total Unlocks" value={s.total_unlocks} icon={Unlock} />
+          <StatBlock label="Total Users" value={s.totalUsers ?? 0} icon={Users} big />
+          <StatBlock label="Total Mods" value={s.totalMods ?? 0} icon={Package} big accent />
+          <StatBlock label="Total Downloads" value={(s.totalDownloads ?? 0).toLocaleString()} icon={Download} big />
+          <StatBlock label="Total Views" value={(s.totalViews ?? 0).toLocaleString()} icon={Eye} big />
+          <StatBlock label="Total Shares" value={(s.totalShares ?? 0).toLocaleString()} icon={Share2} big />
+          <StatBlock label="Free Mods" value={s.freeMods ?? 0} />
+          <StatBlock label="Paid Mods" value={s.paidMods ?? 0} />
+          <StatBlock label="Code Unlock Mods" value={s.codeMods ?? 0} icon={Key} />
         </div>
       </div>
     </>

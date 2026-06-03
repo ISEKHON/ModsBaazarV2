@@ -5,7 +5,7 @@ import { api } from "@/lib/api";
 import ModCard from "@/components/ModCard";
 import StatBlock from "@/components/StatBlock";
 import AnimatedCounter from "@/components/AnimatedCounter";
-import { ArrowRight, Users, Download, Unlock, Eye, Sparkles, ChevronRight } from "lucide-react";
+import { ArrowRight, Users, Download, Eye, Sparkles, ChevronRight } from "lucide-react";
 import Head from "next/head";
 
 const HERO = "https://images.pexels.com/photos/12677320/pexels-photo-12677320.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=900&w=1600";
@@ -24,12 +24,12 @@ export default function Home() {
       try {
         const [f, s, t] = await Promise.all([
           api.get("/mods/featured"),
-          api.get("/stats"),
-          api.get("/mods", { params: { sort: "popular", limit: 8 } }),
+          api.get("/mods/stats"),
+          api.get("/mods", { params: { sort: "downloads", limit: "8" } }),
         ]);
-        setFeatured(f.data);
+        setFeatured(f.data.mods || f.data || []);
         setStats(s.data);
-        setTrending(t.data);
+        setTrending(t.data.mods || t.data || []);
       } catch (e) { /* ignore */ }
     })();
   }, []);
@@ -83,10 +83,10 @@ export default function Home() {
             <div className="md:col-span-5 grid grid-cols-2 gap-3">
               {stats && (
                 <>
-                  <StatBlock label="Total Mods" value={stats.total_mods} icon={Sparkles} delay={0.1} />
-                  <StatBlock label="Downloads" value={formatNum(stats.total_downloads)} accent icon={Download} delay={0.15} />
-                  <StatBlock label="Users" value={stats.total_users} icon={Users} delay={0.2} />
-                  <StatBlock label="Unlocks" value={stats.total_unlocks} icon={Unlock} delay={0.25} />
+                  <StatBlock label="Total Mods" value={stats.totalMods} icon={Sparkles} delay={0.1} />
+                  <StatBlock label="Downloads" value={formatNum(stats.totalDownloads)} accent icon={Download} delay={0.15} />
+                  <StatBlock label="Users" value={stats.totalUsers} icon={Users} delay={0.2} />
+                  <StatBlock label="Views" value={formatNum(stats.totalViews)} icon={Eye} delay={0.25} />
                 </>
               )}
             </div>
@@ -150,22 +150,22 @@ export default function Home() {
               >
                 <div className="mono text-[11px] tracking-widest text-[var(--color-muted-foreground)]">LIFETIME DOWNLOADS</div>
                 <div className="heading text-6xl md:text-8xl mt-4 text-[var(--color-primary)]">
-                  <AnimatedCounter value={formatNum(stats.total_downloads)} />
+                  <AnimatedCounter value={formatNum(stats.totalDownloads)} />
                 </div>
                 <p className="mt-4 text-sm text-[var(--color-muted-foreground)] max-w-md">
                   Across every tractor, map, and placeable the community has hauled away.
                 </p>
                 <div className="absolute right-8 bottom-6 hidden md:flex items-center gap-6 mono text-xs text-[var(--color-muted-foreground)]">
-                  <div><div className="text-[var(--color-foreground)] heading text-xl"><AnimatedCounter value={stats.total_views} /></div>VIEWS</div>
-                  <div><div className="text-[var(--color-foreground)] heading text-xl"><AnimatedCounter value={stats.total_shares} /></div>SHARES</div>
+                  <div><div className="text-[var(--color-foreground)] heading text-xl"><AnimatedCounter value={stats.totalViews} /></div>VIEWS</div>
+                  <div><div className="text-[var(--color-foreground)] heading text-xl"><AnimatedCounter value={stats.totalShares} /></div>SHARES</div>
                 </div>
               </motion.div>
-              <div className="lg:col-span-4"><StatBlock label="Registered Users" value={stats.total_users} icon={Users} /></div>
-              <div className="lg:col-span-4"><StatBlock label="Active (7d)" value={stats.active_users} icon={Eye} /></div>
-              <div className="lg:col-span-3"><StatBlock label="Free Mods" value={stats.free_mods} /></div>
-              <div className="lg:col-span-3"><StatBlock label="Paid Mods" value={stats.paid_mods} /></div>
-              <div className="lg:col-span-3"><StatBlock label="Unlocks" value={stats.total_unlocks} /></div>
-              <div className="lg:col-span-3"><StatBlock label="Total Mods" value={stats.total_mods} accent /></div>
+              <div className="lg:col-span-4"><StatBlock label="Registered Users" value={stats.totalUsers} icon={Users} /></div>
+              <div className="lg:col-span-4"><StatBlock label="Total Views" value={formatNum(stats.totalViews)} icon={Eye} /></div>
+              <div className="lg:col-span-3"><StatBlock label="Free Mods" value={stats.freeMods} /></div>
+              <div className="lg:col-span-3"><StatBlock label="Paid Mods" value={stats.paidMods} /></div>
+              <div className="lg:col-span-3"><StatBlock label="Code Mods" value={stats.codeMods} /></div>
+              <div className="lg:col-span-3"><StatBlock label="Total Mods" value={stats.totalMods} accent /></div>
             </div>
           </section>
         )}
@@ -177,7 +177,7 @@ export default function Home() {
               <div className="mono text-xs tracking-widest text-[var(--color-muted-foreground)]">MOST HAULED</div>
               <h2 className="heading text-3xl md:text-4xl mt-1">TRENDING THIS SEASON</h2>
             </div>
-            <Link href="/browse?sort=popular" className="heading text-xs flex items-center gap-1 hover:text-[var(--color-primary)] transition-colors">
+            <Link href="/browse?sort=downloads" className="heading text-xs flex items-center gap-1 hover:text-[var(--color-primary)] transition-colors">
               VIEW ALL <ChevronRight className="w-4 h-4" />
             </Link>
           </div>

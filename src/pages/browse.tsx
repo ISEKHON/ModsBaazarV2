@@ -13,13 +13,15 @@ const GAMES = [
 ];
 const PRICE_FILTERS = [
   { key: "", label: "ANY" },
-  { key: "false", label: "FREE" },
-  { key: "true", label: "PAID" },
+  { key: "free", label: "FREE" },
+  { key: "paid", label: "PAID" },
+  { key: "unlock_code", label: "CODE" },
 ];
 const SORT_OPTIONS = [
-  { key: "recent", label: "RECENT" },
-  { key: "popular", label: "POPULAR" },
+  { key: "newest", label: "NEWEST" },
+  { key: "downloads", label: "POPULAR" },
   { key: "views", label: "VIEWS" },
+  { key: "likes", label: "LIKES" },
 ];
 
 export default function Browse() {
@@ -30,8 +32,8 @@ export default function Browse() {
 
   const game = (router.query.game as string) || "";
   const category = (router.query.category as string) || "";
-  const is_paid = (router.query.is_paid as string) || "";
-  const sort = (router.query.sort as string) || "recent";
+  const accessType = (router.query.accessType as string) || "";
+  const sort = (router.query.sort as string) || "newest";
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -42,19 +44,22 @@ export default function Browse() {
     if (!router.isReady) return;
     (async () => {
       setLoading(true);
-      const query: any = { sort, limit: 60 };
-      if (q) query.q = q;
+      const query: any = { sort, limit: "60" };
+      if (q) query.search = q;
       if (game) query.game = game;
       if (category) query.category = category;
-      if (is_paid !== "") query.is_paid = is_paid;
+      if (accessType) query.accessType = accessType;
       try {
         const { data } = await api.get("/mods", { params: query });
-        setMods(data);
+        setMods(data.mods || data);
+      } catch (error) {
+        console.error("Failed to load mods:", error);
+        setMods([]);
       } finally {
         setLoading(false);
       }
     })();
-  }, [q, game, category, is_paid, sort, router.isReady]);
+  }, [q, game, category, accessType, sort, router.isReady]);
 
   const setParam = (k: string, v: string) => {
     const params = { ...router.query };
@@ -98,9 +103,9 @@ export default function Browse() {
               </Chip>
             ))}
           </FilterGroup>
-          <FilterGroup label="PRICE">
+          <FilterGroup label="ACCESS">
             {PRICE_FILTERS.map(p => (
-              <Chip key={p.key} active={is_paid === p.key} onClick={() => setParam("is_paid", p.key)} testid={`filter-price-${p.key || "all"}`}>
+              <Chip key={p.key} active={accessType === p.key} onClick={() => setParam("accessType", p.key)} testid={`filter-access-${p.key || "all"}`}>
                 {p.label}
               </Chip>
             ))}

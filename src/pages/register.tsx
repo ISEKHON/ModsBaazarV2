@@ -6,9 +6,10 @@ import { toast } from "sonner";
 import Head from "next/head";
 
 export default function Register() {
-  const { register, formatApiErrorDetail } = useAuth();
+  const { register, formatApiError } = useAuth();
   const router = useRouter();
-  const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -17,11 +18,11 @@ export default function Register() {
     e.preventDefault();
     setBusy(true);
     try {
-      await register(name, email, password);
+      await register(username, email, password, displayName);
       toast.success("Welcome to FS Mods Hub");
       router.push("/dashboard");
     } catch (err: any) {
-      toast.error(formatApiErrorDetail(err.response?.data?.detail) || "Register failed");
+      toast.error(formatApiError(err));
     } finally { setBusy(false); }
   };
 
@@ -34,8 +35,16 @@ export default function Register() {
           <h1 className="heading text-3xl mt-1">CREATE ACCOUNT</h1>
           <form onSubmit={onSubmit} className="mt-6 space-y-4">
             <div>
-              <label className="heading text-[11px] tracking-widest block mb-1" htmlFor="name">DISPLAY NAME</label>
-              <input id="name" required value={name} onChange={(e) => setName(e.target.value)}
+              <label className="heading text-[11px] tracking-widest block mb-1" htmlFor="username">USERNAME</label>
+              <input id="username" required value={username} onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
+                placeholder="e.g. john_farmer" maxLength={20} minLength={3}
+                className="w-full mono h-11 px-3 border border-[var(--color-border)] bg-transparent focus:border-[var(--color-primary)] outline-none transition-colors" data-testid="username-input" />
+              <span className="mono text-[10px] text-[var(--color-muted-foreground)] mt-0.5 block">3-20 chars, lowercase, letters, numbers, underscores</span>
+            </div>
+            <div>
+              <label className="heading text-[11px] tracking-widest block mb-1" htmlFor="displayName">DISPLAY NAME</label>
+              <input id="displayName" required value={displayName} onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="e.g. John Farmer" maxLength={30} minLength={2}
                 className="w-full mono h-11 px-3 border border-[var(--color-border)] bg-transparent focus:border-[var(--color-primary)] outline-none transition-colors" data-testid="name-input" />
             </div>
             <div>
@@ -47,6 +56,7 @@ export default function Register() {
               <label className="heading text-[11px] tracking-widest block mb-1" htmlFor="password">PASSWORD</label>
               <input id="password" type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)}
                 className="w-full mono h-11 px-3 border border-[var(--color-border)] bg-transparent focus:border-[var(--color-primary)] outline-none transition-colors" data-testid="password-input" />
+              <span className="mono text-[10px] text-[var(--color-muted-foreground)] mt-0.5 block">Minimum 6 characters</span>
             </div>
             <button type="submit" disabled={busy} className="w-full h-11 heading bg-[var(--color-primary)] text-[var(--color-primary-foreground)] hover:opacity-90 btn-press transition-opacity disabled:opacity-50" data-testid="register-submit">
               {busy ? "CREATING..." : "SIGN UP"}

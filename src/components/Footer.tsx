@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Tractor, ExternalLink, MessageCircle } from "lucide-react";
+import { Tractor, MessageCircle, Send, Globe, Code2 } from "lucide-react";
 
 export default function Footer() {
   return (
@@ -21,31 +21,41 @@ export default function Footer() {
           <ul className="space-y-2 text-sm">
             <li><Link href="/browse?game=fs22" className="hover:text-[var(--color-primary)] transition-colors">FS22 Mods</Link></li>
             <li><Link href="/browse?game=fs25" className="hover:text-[var(--color-primary)] transition-colors">FS25 Mods</Link></li>
-            <li><Link href="/browse?category=vehicles" className="hover:text-[var(--color-primary)] transition-colors">Vehicles</Link></li>
-            <li><Link href="/browse?category=maps" className="hover:text-[var(--color-primary)] transition-colors">Maps</Link></li>
+            <li><Link href="/modders" className="hover:text-[var(--color-primary)] transition-colors">Top Modders</Link></li>
+            <li><Link href="/stats" className="hover:text-[var(--color-primary)] transition-colors">Platform Stats</Link></li>
           </ul>
         </div>
         <div>
-          <div className="heading text-xs text-[var(--color-muted-foreground)] mb-3">INFO</div>
+          <div className="heading text-xs text-[var(--color-muted-foreground)] mb-3">LEGAL</div>
           <ul className="space-y-2 text-sm">
-            <li><Link href="/stats" className="hover:text-[var(--color-primary)] transition-colors">Platform Stats</Link></li>
-            <li><Link href="/dashboard" className="hover:text-[var(--color-primary)] transition-colors">My Dashboard</Link></li>
+            <li><Link href="/terms" className="hover:text-[var(--color-primary)] transition-colors">Terms of Conditions</Link></li>
+            <li><Link href="/privacy" className="hover:text-[var(--color-primary)] transition-colors">Privacy Policy</Link></li>
+            <li><Link href="/about" className="hover:text-[var(--color-primary)] transition-colors">About</Link></li>
           </ul>
         </div>
         <div>
           <div className="heading text-xs text-[var(--color-muted-foreground)] mb-3">CONNECT</div>
           <div className="flex gap-2">
-            <a className="p-2 border border-[var(--color-border)] hover:border-[var(--color-primary)] transition-colors" href="#" aria-label="Twitter">
+            <a className="p-2 border border-[var(--color-border)] hover:border-[var(--color-primary)] transition-colors" href="#" aria-label="Discord" title="Discord: .sekhon">
               <MessageCircle className="w-4 h-4" />
             </a>
-            <a className="p-2 border border-[var(--color-border)] hover:border-[var(--color-primary)] transition-colors" href="#" aria-label="Github">
-              <ExternalLink className="w-4 h-4" />
+            <a className="p-2 border border-[var(--color-border)] hover:border-[var(--color-primary)] transition-colors" href="https://t.me/MrCode_403" target="_blank" rel="noopener noreferrer" aria-label="Telegram">
+              <Send className="w-4 h-4" />
             </a>
+            <a className="p-2 border border-[var(--color-border)] hover:border-[var(--color-primary)] transition-colors" href="https://github.com/isekhon" target="_blank" rel="noopener noreferrer" aria-label="GitHub">
+              <Code2 className="w-4 h-4" />
+            </a>
+            <a className="p-2 border border-[var(--color-border)] hover:border-[var(--color-primary)] transition-colors" href="https://isekhon.me" target="_blank" rel="noopener noreferrer" aria-label="Portfolio">
+              <Globe className="w-4 h-4" />
+            </a>
+          </div>
+          <div className="mt-3 mono text-[10px] text-[var(--color-muted-foreground)]">
+            Built by <Link href="/about" className="text-[var(--color-primary)] hover:underline">SEKHON</Link>
           </div>
         </div>
       </div>
       <div className="border-t border-[var(--color-border)] py-5 text-center text-xs mono text-[var(--color-muted-foreground)]">
-        © 2026 FS Mods Hub — Not affiliated with GIANTS Software.
+        © 2026 FS Mods Hub — Not affiliated with GIANTS Software GmbH.
       </div>
     </footer>
   );

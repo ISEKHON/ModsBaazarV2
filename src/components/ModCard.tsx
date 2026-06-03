@@ -1,26 +1,57 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Download, Eye, Lock, Tag } from "lucide-react";
+import { Download, Eye, Lock, Tag, Heart, Key, MessageSquare } from "lucide-react";
+import { resolveAssetUrl } from "@/lib/api";
 
 interface ModCardProps {
   mod: {
-    id: number;
+    id: string;
     title: string;
-    icon_url: string;
+    iconUrl: string;
     game: string;
-    is_paid: boolean;
+    accessType: "free" | "paid" | "unlock_code";
     version: string;
-    short_description?: string;
+    shortDescription?: string;
     description?: string;
     tags?: string[];
     views?: number;
     downloads?: number;
-    author?: string;
+    likesCount?: number;
+    author?: {
+      id: string;
+      username: string;
+      displayName: string;
+      avatarUrl?: string | null;
+      isVerified?: boolean;
+    };
   };
   index?: number;
 }
 
 export default function ModCard({ mod, index = 0 }: ModCardProps) {
+  const accessBadge = () => {
+    switch (mod.accessType) {
+      case "paid":
+        return (
+          <span className="heading text-[10px] px-2 py-0.5 text-black stripe-tape font-bold">
+            <MessageSquare className="w-3 h-3 inline -mt-0.5 mr-1" />PAID
+          </span>
+        );
+      case "unlock_code":
+        return (
+          <span className="heading text-[10px] px-2 py-0.5 bg-[hsl(45,80%,40%)] text-black font-bold">
+            <Key className="w-3 h-3 inline -mt-0.5 mr-1" />CODE
+          </span>
+        );
+      default:
+        return (
+          <span className="heading text-[10px] px-2 py-0.5 bg-[hsl(142,50%,30%)] text-white">
+            FREE
+          </span>
+        );
+    }
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
@@ -33,7 +64,7 @@ export default function ModCard({ mod, index = 0 }: ModCardProps) {
       <Link href={`/mod/${mod.id}`} className="group flex flex-col h-full bg-[var(--color-card)] border border-[var(--color-border)] hover:border-[var(--color-primary)] transition-colors card-hover">
         <div className="relative aspect-[16/10] overflow-hidden bg-[var(--color-muted)] shrink-0">
           <img
-            src={mod.icon_url}
+            src={resolveAssetUrl(mod.iconUrl)}
             alt={mod.title}
             loading="lazy"
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
@@ -42,15 +73,7 @@ export default function ModCard({ mod, index = 0 }: ModCardProps) {
             <span className="heading text-[10px] px-2 py-0.5 bg-[var(--color-background)]/90 text-[var(--color-foreground)] border border-[var(--color-border)]">
               {mod.game.toUpperCase()}
             </span>
-            {mod.is_paid ? (
-              <span className="heading text-[10px] px-2 py-0.5 text-black stripe-tape font-bold">
-                <Lock className="w-3 h-3 inline -mt-0.5 mr-1" />PAID
-              </span>
-            ) : (
-              <span className="heading text-[10px] px-2 py-0.5 bg-[hsl(142,50%,30%)] text-white">
-                FREE
-              </span>
-            )}
+            {accessBadge()}
           </div>
           <div className="absolute inset-x-0 bottom-0 h-1 bg-[var(--color-primary)] scale-x-0 origin-left transition-transform duration-300 group-hover:scale-x-100" />
         </div>
@@ -61,12 +84,12 @@ export default function ModCard({ mod, index = 0 }: ModCardProps) {
             <span className="mono text-[10px] text-[var(--color-muted-foreground)] shrink-0">v{mod.version}</span>
           </div>
           <p className="text-xs text-[var(--color-muted-foreground)] line-clamp-2 leading-relaxed mt-1 min-h-[2.25rem]">
-            {mod.short_description || mod.description}
+            {mod.shortDescription || mod.description}
           </p>
 
           <div className="flex flex-wrap gap-1 mt-2 min-h-[1.5rem]">
-            {(mod.tags || []).slice(0, 3).map((t) => (
-              <span key={t} className="mono text-[10px] px-1.5 py-0.5 border border-[var(--color-border)] text-[var(--color-muted-foreground)]">
+            {(mod.tags || []).slice(0, 3).map((t, i) => (
+              <span key={`${t}-${i}`} className="mono text-[10px] px-1.5 py-0.5 border border-[var(--color-border)] text-[var(--color-muted-foreground)]">
                 <Tag className="w-2.5 h-2.5 inline -mt-0.5 mr-1" />{t}
               </span>
             ))}
@@ -76,8 +99,14 @@ export default function ModCard({ mod, index = 0 }: ModCardProps) {
             <div className="flex items-center gap-3 text-[11px] mono text-[var(--color-muted-foreground)]">
               <span className="flex items-center gap-1"><Eye className="w-3 h-3" />{formatNumber(mod.views)}</span>
               <span className="flex items-center gap-1"><Download className="w-3 h-3" />{formatNumber(mod.downloads)}</span>
+              <span className="flex items-center gap-1"><Heart className="w-3 h-3" />{formatNumber(mod.likesCount)}</span>
             </div>
-            <span className="mono text-[10px] text-[var(--color-muted-foreground)] truncate max-w-[120px]">by {mod.author}</span>
+            {mod.author ? (
+              <span className="mono text-[10px] text-[var(--color-muted-foreground)] truncate max-w-[120px]">
+                by {mod.author.displayName}
+                {mod.author.isVerified && <span className="text-[var(--color-primary)] ml-0.5">✓</span>}
+              </span>
+            ) : null}
           </div>
         </div>
       </Link>

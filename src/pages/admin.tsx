@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/router";
-import { api, formatApiErrorDetail } from "@/lib/api";
+import { api, formatApiError, resolveAssetUrl } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import {
@@ -14,9 +14,43 @@ import Head from "next/head";
 type Tab = "dashboard" | "mods" | "users" | "activity" | "reports" | "settings";
 
 const EMPTY_MOD = {
-  title: "", description: "", short_description: "", game: "fs25",
-  version: "1.0.0", author: "", tags: [] as string[], icon_url: "", gallery: [] as string[],
-  is_paid: false, price: 0, category: "vehicles", file_size_mb: 0,
+  title: "",
+  description: "",
+  shortDescription: "",
+  game: "fs25",
+  version: "1.0.0",
+  tags: [] as string[],
+  iconUrl: "",
+  gallery: [] as string[],
+  accessType: "free",
+  price: 0,
+  unlockCode: "",
+  category: "vehicles",
+  fileSizeMb: 0,
+  downloadUrl: "",
+};
+
+const normalizeModForm = (input: any) => {
+  const fallback = { ...EMPTY_MOD };
+  const accessType = input?.accessType || input?.access_type || fallback.accessType;
+  return {
+    ...fallback,
+    ...input,
+    title: input?.title ?? fallback.title,
+    description: input?.description ?? fallback.description,
+    shortDescription: input?.shortDescription ?? input?.short_description ?? fallback.shortDescription,
+    game: input?.game ?? fallback.game,
+    version: input?.version ?? fallback.version,
+    tags: input?.tags ?? fallback.tags,
+    iconUrl: input?.iconUrl ?? input?.icon_url ?? fallback.iconUrl,
+    gallery: input?.gallery ?? fallback.gallery,
+    accessType,
+    price: input?.price ?? fallback.price,
+    unlockCode: input?.unlockCode ?? input?.unlock_code ?? fallback.unlockCode,
+    category: input?.category ?? fallback.category,
+    fileSizeMb: input?.fileSizeMb ?? input?.file_size_mb ?? fallback.fileSizeMb,
+    downloadUrl: input?.downloadUrl ?? input?.download_url ?? fallback.downloadUrl,
+  };
 };
 
 const BAN_REASONS = [
@@ -138,7 +172,8 @@ export default function Admin() {
   const [users, setUsers] = useState<any[]>([]);
   const [activity, setActivity] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
-  const [reports] = useState(MOCK_REPORTS);
+  const [reports, setReports] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   // Modal
   const [editing, setEditing] = useState<any>(null);
@@ -153,8 +188,8 @@ export default function Admin() {
   const [banDialog, setBanDialog] = useState<{ open: boolean; user: any }>({ open: false, user: null });
 
   useEffect(() => {
-    if (user === false) router.push("/login");
-    else if (user && user.role !== "admin") router.push("/");
+    if (!user) router.push("/login");
+    else if (user && user.role !== "admin" && user.role !== "owner") router.push("/");
     else if (user) refresh();
   }, [user]);
 
@@ -164,13 +199,26 @@ export default function Admin() {
   }, [modalOpen]);
 
   const refresh = useCallback(async () => {
-    const [m, s, u, a] = await Promise.all([
-      api.get("/mods", { params: { limit: 200 } }),
-      api.get("/stats"),
-      api.get("/admin/users"),
-      api.get("/admin/activity"),
-    ]);
-    setMods(m.data); setStats(s.data); setUsers(u.data); setActivity(a.data);
+    setLoading(true);
+    try {
+      const [m, s, u, a, r] = await Promise.all([
+        api.get("/mods/admin/all", { params: { limit: "100" } }),
+        api.get("/mods/stats"),
+        api.get("/users/admin/all", { params: { limit: "100" } }),
+        api.get("/activity/admin/all"),
+        api.get("/reports/admin/all", { params: { limit: "100" } }),
+      ]);
+      setMods(m.data.mods || m.data || []); 
+      setStats(s.data || {}); 
+      setUsers(u.data.users || u.data || []); 
+      setActivity(a.data.activities || a.data || []);
+      setReports(r.data.reports || r.data || []);
+    } catch (error) {
+      console.error("Failed to load admin data:", error);
+      toast.error("Failed to load admin data. Check console for details.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   const openConfirm = (title: string, message: string, onConfirm: () => void, danger = true) => {
@@ -179,30 +227,35 @@ export default function Admin() {
   const closeConfirm = () => setConfirm(c => ({ ...c, open: false }));
 
   // ── Mod actions
-  const startNewMod = () => { setEditing({ ...EMPTY_MOD }); setModalOpen(true); };
+  const startNewMod = () => { setEditing(normalizeModForm({})); setModalOpen(true); };
   const startEditMod = async (mod: any) => {
-    try { const { data } = await api.get(`/admin/mods/${mod.id}`); setEditing(data); setModalOpen(true); }
+    try { const { data } = await api.get(`/mods/${mod.id}`); setEditing(normalizeModForm(data)); setModalOpen(true); }
     catch { toast.error("Failed to load mod"); }
   };
   const deleteMod = (mod: any) => {
     openConfirm("DELETE MOD", `Permanently delete "${mod.title}"? This cannot be undone.`, async () => {
       closeConfirm();
-      try { await api.delete(`/admin/mods/${mod.id}`); toast.success("Mod deleted"); refresh(); }
-      catch (e: any) { toast.error(formatApiErrorDetail(e.response?.data?.detail)); }
+      try {
+        await api.delete(`/mods/${mod.id}`);
+        setMods((prev) => prev.filter((m: any) => m.id !== mod.id));
+        toast.success("Mod deleted");
+      }
+      catch (e: any) { toast.error(formatApiError(e)); }
     });
   };
   const featureMod = async (id: number) => {
-    try { await api.post(`/admin/mods/${id}/feature`); toast.success("Featured toggled"); refresh(); }
-    catch (e: any) { toast.error(formatApiErrorDetail(e.response?.data?.detail)); }
+    try { await api.put(`/mods/admin/${id}/feature`); toast.success("Featured toggled"); refresh(); }
+    catch (e: any) { toast.error(formatApiError(e)); }
   };
 
   // ── User actions
   const banUser = (u: any) => {
+    const userName = u.displayName || u.username;
     if (u.status === "banned") {
-      openConfirm("UNBAN USER", `Restore access for "${u.name}"?`, async () => {
+      openConfirm("UNBAN USER", `Restore access for "${userName}"?`, async () => {
         closeConfirm();
-        try { await api.put(`/admin/users/${u.id}`, { status: "active" }); toast.success("User unbanned"); refresh(); }
-        catch (e: any) { toast.error(formatApiErrorDetail(e.response?.data?.detail)); }
+        try { await api.put(`/users/admin/${u.id}/unban`); toast.success("User unbanned"); refresh(); }
+        catch (e: any) { toast.error(formatApiError(e)); }
       }, false);
     } else {
       setBanDialog({ open: true, user: u });
@@ -210,37 +263,55 @@ export default function Admin() {
   };
   const confirmBan = async (reason: string) => {
     const u = banDialog.user;
+    const userName = u.displayName || u.username;
     setBanDialog({ open: false, user: null });
     try {
-      await api.put(`/admin/users/${u.id}`, { status: "banned", ban_reason: reason });
-      toast.success(`${u.name} banned — ${reason}`);
+      await api.put(`/users/admin/${u.id}/ban`, { reason });
+      toast.success(`${userName} banned — ${reason}`);
       refresh();
-    } catch (e: any) { toast.error(formatApiErrorDetail(e.response?.data?.detail)); }
+    } catch (e: any) { toast.error(formatApiError(e)); }
   };
   const promoteUser = (u: any) => {
+    const userName = u.displayName || u.username;
     const isAdmin = u.role === "admin";
     openConfirm(isAdmin ? "REMOVE ADMIN" : "MAKE ADMIN",
-      isAdmin ? `Remove admin privileges from "${u.name}"?` : `Grant admin privileges to "${u.name}"? They'll have full control.`,
+      isAdmin ? `Remove admin privileges from "${userName}"?` : `Grant admin privileges to "${userName}"? They'll have full control.`,
       async () => {
         closeConfirm();
-        try { await api.put(`/admin/users/${u.id}`, { role: isAdmin ? "user" : "admin" }); toast.success(isAdmin ? "Admin removed" : "Promoted to admin"); refresh(); }
-        catch (e: any) { toast.error(formatApiErrorDetail(e.response?.data?.detail)); }
+        try { await api.put(`/users/admin/${u.id}/role`, { role: isAdmin ? "member" : "admin" }); toast.success(isAdmin ? "Admin removed" : "Promoted to admin"); refresh(); }
+        catch (e: any) { toast.error(formatApiError(e)); }
+      }, false);
+  };
+  const toggleModder = (u: any) => {
+    const userName = u.displayName || u.username;
+    const isModder = u.role === "modder";
+    openConfirm(isModder ? "REMOVE MODDER" : "MAKE MODDER",
+      isModder ? `Remove modder role from "${userName}"?` : `Grant modder role to "${userName}"?`,
+      async () => {
+        closeConfirm();
+        try {
+          await api.put(`/users/admin/${u.id}/role`, { role: isModder ? "member" : "modder" });
+          toast.success(isModder ? "Modder removed" : "Promoted to modder");
+          refresh();
+        } catch (e: any) { toast.error(formatApiError(e)); }
       }, false);
   };
   const deleteUser = (u: any) => {
-    openConfirm("DELETE USER", `Permanently delete "${u.name}" (${u.email})?`, async () => {
+    const userName = u.displayName || u.username;
+    openConfirm("DELETE USER", `Permanently delete "${userName}" (${u.email})?`, async () => {
       closeConfirm();
-      try { await api.delete(`/admin/users/${u.id}`); toast.success("User deleted"); refresh(); }
-      catch (e: any) { toast.error(formatApiErrorDetail(e.response?.data?.detail)); }
+      try { await api.delete(`/users/admin/${u.id}`); toast.success("User deleted"); refresh(); }
+      catch (e: any) { toast.error(formatApiError(e)); }
     });
   };
 
-  if (!user || user === false || user.role !== "admin") return <div className="p-10">Checking access...</div>;
+  if (!user || (user.role !== "admin" && user.role !== "owner")) return <div className="p-10">Checking access...</div>;
 
+  const visibleMods = mods.filter((m: any) => m.status !== "deleted");
   const openReports = reports.filter(r => r.status === "open").length;
   const TABS: { key: Tab; label: string; icon: any; badge?: number }[] = [
     { key: "dashboard", label: "OVERVIEW", icon: LayoutDashboard },
-    { key: "mods", label: "MODS", icon: Package, badge: mods.length },
+    { key: "mods", label: "MODS", icon: Package, badge: visibleMods.length },
     { key: "users", label: "USERS", icon: Users, badge: users.length },
     { key: "reports", label: "REPORTS", icon: Flag, badge: openReports || undefined },
     { key: "activity", label: "ACTIVITY", icon: Activity },
@@ -272,12 +343,18 @@ export default function Admin() {
         </div>
 
         <div className="mt-6">
-          {tab === "dashboard" && <DashboardTab stats={stats} mods={mods} users={users} activity={activity} reports={reports} setTab={setTab} />}
-          {tab === "mods" && <ModsTab mods={mods} onNew={startNewMod} onEdit={startEditMod} onDelete={deleteMod} onFeature={featureMod} />}
-          {tab === "users" && <UsersTab users={users} onBan={banUser} onPromote={promoteUser} onDelete={deleteUser} />}
-          {tab === "reports" && <ReportsTab reports={reports} />}
-          {tab === "activity" && <ActivityTab activity={activity} />}
-          {tab === "settings" && <SettingsTab />}
+          {loading && (
+            <div className="border border-[var(--color-border)] bg-[var(--color-card)] p-6 animate-pulse">
+              <div className="mono text-xs tracking-widest text-[var(--color-muted-foreground)]">LOADING ADMIN DATA</div>
+              <div className="heading text-lg mt-2">Please wait...</div>
+            </div>
+          )}
+          {!loading && tab === "dashboard" && <DashboardTab stats={stats} mods={visibleMods} users={users} activity={activity} reports={reports} setTab={setTab} />}
+          {!loading && tab === "mods" && <ModsTab mods={visibleMods} onNew={startNewMod} onEdit={startEditMod} onDelete={deleteMod} onFeature={featureMod} />}
+          {!loading && tab === "users" && <UsersTab users={users} onBan={banUser} onPromote={promoteUser} onModder={toggleModder} onDelete={deleteUser} />}
+          {!loading && tab === "reports" && <ReportsTab reports={reports} />}
+          {!loading && tab === "activity" && <ActivityTab activity={activity} />}
+          {!loading && tab === "settings" && <SettingsTab />}
         </div>
       </div>
 
@@ -297,7 +374,7 @@ export default function Admin() {
       )}
 
       <ConfirmDialog open={confirm.open} title={confirm.title} message={confirm.message} danger={confirm.danger} onConfirm={confirm.onConfirm} onCancel={closeConfirm} />
-      <BanDialog open={banDialog.open} userName={banDialog.user?.name || ""} onConfirm={confirmBan} onCancel={() => setBanDialog({ open: false, user: null })} />
+      <BanDialog open={banDialog.open} userName={banDialog.user?.displayName || banDialog.user?.username || ""} onConfirm={confirmBan} onCancel={() => setBanDialog({ open: false, user: null })} />
     </>
   );
 }
@@ -306,7 +383,7 @@ export default function Admin() {
 function DashboardTab({ stats, mods, users, activity, reports, setTab }: any) {
   if (!stats) return null;
   const topMods = [...mods].sort((a: any, b: any) => b.downloads - a.downloads).slice(0, 5);
-  const recentUsers = [...users].sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 5);
+  const recentUsers = [...users].sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5);
   const openReports = reports.filter((r: any) => r.status === "open");
   const bannedCount = users.filter((u: any) => u.status === "banned").length;
 
@@ -328,11 +405,11 @@ function DashboardTab({ stats, mods, users, activity, reports, setTab }: any) {
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-        <SmallStat label="TOTAL USERS" value={stats.total_users} icon={Users} />
-        <SmallStat label="TOTAL MODS" value={stats.total_mods} icon={Package} accent />
-        <SmallStat label="DOWNLOADS" value={fmtK(stats.total_downloads)} icon={Download} />
-        <SmallStat label="UNLOCKS" value={stats.total_unlocks} icon={Unlock} />
-        <SmallStat label="ACTIVE 7D" value={stats.active_users} icon={Eye} />
+        <SmallStat label="TOTAL USERS" value={stats.totalUsers} icon={Users} />
+        <SmallStat label="TOTAL MODS" value={stats.totalMods} icon={Package} accent />
+        <SmallStat label="DOWNLOADS" value={fmtK(stats.totalDownloads)} icon={Download} />
+        <SmallStat label="UNLOCKS" value={stats.codeMods} icon={Unlock} />
+        <SmallStat label="ACTIVE 7D" value={users.filter((u: any) => u.status === "active").length} icon={Eye} />
         <SmallStat label="BANNED" value={bannedCount} icon={Ban} danger={bannedCount > 0} />
       </div>
 
@@ -342,7 +419,7 @@ function DashboardTab({ stats, mods, users, activity, reports, setTab }: any) {
           {topMods.map((m: any, i: number) => (
             <div key={m.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-[var(--color-border)]/50 last:border-0">
               <span className="heading text-lg text-[var(--color-muted-foreground)] w-5">{i + 1}</span>
-              <img src={m.icon_url} alt="" className="w-8 h-8 object-cover border border-[var(--color-border)]" />
+              <img src={resolveAssetUrl(m.iconUrl)} alt="" className="w-8 h-8 object-cover border border-[var(--color-border)]" />
               <div className="flex-1 min-w-0">
                 <div className="text-xs truncate">{m.title}</div>
                 <div className="mono text-[10px] text-[var(--color-muted-foreground)]">{m.downloads.toLocaleString()} dl</div>
@@ -356,10 +433,10 @@ function DashboardTab({ stats, mods, users, activity, reports, setTab }: any) {
         <Panel title="RECENT USERS" action="VIEW ALL →" onAction={() => setTab("users")}>
           {recentUsers.map((u: any) => (
             <div key={u.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-[var(--color-border)]/50 last:border-0">
-              <Avatar name={u.name} banned={u.status === "banned"} admin={u.role === "admin"} />
+              <Avatar name={u.displayName || u.username} banned={u.status === "banned"} admin={u.role === "admin"} />
               <div className="flex-1 min-w-0">
-                <div className="text-xs truncate">{u.name}</div>
-                <div className="mono text-[10px] text-[var(--color-muted-foreground)]">{fmtDate(u.created_at)}</div>
+                <div className="text-xs truncate">{u.displayName || u.username}</div>
+                <div className="mono text-[10px] text-[var(--color-muted-foreground)]">{fmtDate(u.createdAt)}</div>
               </div>
               <StatusBadge status={u.status} role={u.role} />
             </div>
@@ -374,10 +451,10 @@ function DashboardTab({ stats, mods, users, activity, reports, setTab }: any) {
 
       {/* Mod breakdown */}
       <div className="grid md:grid-cols-4 gap-3">
-        <SmallStat label="FREE MODS" value={stats.free_mods} />
-        <SmallStat label="PAID MODS" value={stats.paid_mods} />
-        <SmallStat label="VIEWS" value={fmtK(stats.total_views)} icon={Eye} />
-        <SmallStat label="SHARES" value={fmtK(stats.total_shares)} />
+        <SmallStat label="FREE MODS" value={stats.freeMods} />
+        <SmallStat label="PAID MODS" value={stats.paidMods} />
+        <SmallStat label="VIEWS" value={fmtK(stats.totalViews)} icon={Eye} />
+        <SmallStat label="SHARES" value={fmtK(stats.totalShares)} />
       </div>
     </div>
   );
@@ -387,7 +464,9 @@ function DashboardTab({ stats, mods, users, activity, reports, setTab }: any) {
 function ModsTab({ mods, onNew, onEdit, onDelete, onFeature }: any) {
   const [search, setSearch] = useState("");
   const filtered = mods.filter((m: any) =>
-    m.title.toLowerCase().includes(search.toLowerCase()) || m.author.toLowerCase().includes(search.toLowerCase())
+    m.title.toLowerCase().includes(search.toLowerCase()) || 
+    (m.author?.username || "").toLowerCase().includes(search.toLowerCase()) ||
+    (m.author?.displayName || "").toLowerCase().includes(search.toLowerCase())
   );
 
   return (
@@ -416,12 +495,12 @@ function ModsTab({ mods, onNew, onEdit, onDelete, onFeature }: any) {
             {filtered.map((m: any) => (
               <tr key={m.id} className="border-b border-[var(--color-border)] hover:bg-[var(--color-card)]/50 transition-colors">
                 <td className="p-3"><div className="flex items-center gap-2">
-                  <img src={m.icon_url} alt="" className="w-8 h-6 object-cover border border-[var(--color-border)] hidden sm:block" />
+                  <img src={resolveAssetUrl(m.iconUrl)} alt="" className="w-8 h-6 object-cover border border-[var(--color-border)] hidden sm:block" />
                   <span className="heading text-xs truncate max-w-[200px]">{m.title}</span>
                 </div></td>
                 <td className="p-3 mono text-xs uppercase hidden md:table-cell">{m.game}</td>
-                <td className="p-3 mono text-xs hidden sm:table-cell">{m.author}</td>
-                <td className="p-3 mono text-xs">{m.is_paid ? `$${m.price?.toFixed(2)}` : "FREE"}</td>
+                <td className="p-3 mono text-xs hidden sm:table-cell">{m.author?.displayName || m.author?.username || "Unknown"}</td>
+                <td className="p-3 mono text-xs">{m.accessType === "paid" ? `₹${(Number(m.price) || 0).toFixed(2)}` : "FREE"}</td>
                 <td className="p-3 mono text-xs text-right hidden md:table-cell">{m.downloads.toLocaleString()}</td>
                 <td className="p-3 mono text-xs text-right hidden lg:table-cell">{m.views.toLocaleString()}</td>
                 <td className="p-3 text-right"><div className="flex items-center justify-end gap-0.5">
@@ -439,12 +518,12 @@ function ModsTab({ mods, onNew, onEdit, onDelete, onFeature }: any) {
 }
 
 // ━━━ USERS TAB ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function UsersTab({ users, onBan, onPromote, onDelete }: any) {
+function UsersTab({ users, onBan, onPromote, onModder, onDelete }: any) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "active" | "banned" | "admin">("all");
 
   let filtered = users.filter((u: any) =>
-    u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase())
+    (u.displayName || u.username || "").toLowerCase().includes(search.toLowerCase()) || (u.email || "").toLowerCase().includes(search.toLowerCase())
   );
   if (filter === "active") filtered = filtered.filter((u: any) => u.status === "active" && u.role !== "admin");
   if (filter === "banned") filtered = filtered.filter((u: any) => u.status === "banned");
@@ -481,17 +560,18 @@ function UsersTab({ users, onBan, onPromote, onDelete }: any) {
             {filtered.map((u: any) => (
               <tr key={u.id} className={`border-b border-[var(--color-border)] transition-colors ${u.status === "banned" ? "opacity-60" : "hover:bg-[var(--color-card)]/50"}`}>
                 <td className="p-3"><div className="flex items-center gap-2">
-                  <Avatar name={u.name} banned={u.status === "banned"} admin={u.role === "admin"} />
-                  <span className="heading text-xs truncate max-w-[120px]">{u.name}</span>
+                  <Avatar name={u.displayName || u.username} banned={u.status === "banned"} admin={u.role === "admin"} />
+                  <span className="heading text-xs truncate max-w-[120px]">{u.displayName || u.username}</span>
                 </div></td>
                 <td className="p-3 mono text-xs text-[var(--color-muted-foreground)] hidden md:table-cell">{u.email}</td>
                 <td className="p-3"><RoleBadge role={u.role} /></td>
                 <td className="p-3"><StatusBadge status={u.status} /></td>
                 <td className="p-3 mono text-xs text-right hidden sm:table-cell">{u.downloads}</td>
                 <td className="p-3 mono text-xs text-right hidden sm:table-cell">{u.unlocks}</td>
-                <td className="p-3 mono text-[10px] text-[var(--color-muted-foreground)] hidden lg:table-cell">{fmtDate(u.created_at)}</td>
+                <td className="p-3 mono text-[10px] text-[var(--color-muted-foreground)] hidden lg:table-cell">{fmtDate(u.createdAt)}</td>
                 <td className="p-3 text-right"><div className="flex items-center justify-end gap-0.5">
                   <IconBtn onClick={() => onPromote(u)} title={u.role === "admin" ? "Remove admin" : "Make admin"}><Shield className="w-4 h-4" /></IconBtn>
+                  <IconBtn onClick={() => onModder(u)} title={u.role === "modder" ? "Remove modder" : "Make modder"}><Package className="w-4 h-4" /></IconBtn>
                   <IconBtn onClick={() => onBan(u)} title={u.status === "banned" ? "Unban" : "Ban"} warn>
                     {u.status === "banned" ? <UserCheck className="w-4 h-4" /> : <Ban className="w-4 h-4" />}
                   </IconBtn>
@@ -513,6 +593,7 @@ function ReportsTab({ reports }: { reports: any[] }) {
 
   const statusColors: Record<string, string> = {
     open: "bg-[hsl(0,84%,60%)]/15 text-[hsl(0,84%,60%)]",
+    investigating: "bg-[hsl(40,90%,55%)]/15 text-[hsl(40,90%,55%)]",
     resolved: "bg-[hsl(142,50%,30%)]/15 text-[hsl(142,50%,50%)]",
     dismissed: "bg-[var(--color-muted)] text-[var(--color-muted-foreground)]",
   };
@@ -528,19 +609,26 @@ function ReportsTab({ reports }: { reports: any[] }) {
       </div>
       <div className="mono text-[10px] text-[var(--color-muted-foreground)] mb-2">{filtered.length} REPORT(S)</div>
       <div className="space-y-3">
-        {filtered.map(r => (
+        {filtered.map(r => {
+          const reporterName = typeof r.reporter === "string"
+            ? r.reporter
+            : r.reporter?.displayName || r.reporter?.username || "Unknown";
+          const modTitle = r.mod?.title || r.mod_title || "Unknown mod";
+          const createdAt = r.createdAt || r.created_at;
+          const reasonText = r.reason ? String(r.reason).replace(/_/g, " ") : r.reasonText || r.details || "";
+          return (
           <div key={r.id} className="border border-[var(--color-border)] bg-[var(--color-card)] p-4">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-2">
                 <FileWarning className={`w-4 h-4 shrink-0 ${r.status === "open" ? "text-[hsl(0,84%,60%)]" : "text-[var(--color-muted-foreground)]"}`} />
                 <div>
-                  <div className="heading text-sm">{r.mod_title}</div>
-                  <div className="mono text-[10px] text-[var(--color-muted-foreground)]">Reported by {r.reporter} • {fmtTimeAgo(r.created_at)}</div>
+                  <div className="heading text-sm">{modTitle}</div>
+                  <div className="mono text-[10px] text-[var(--color-muted-foreground)]">Reported by {reporterName} • {fmtTimeAgo(createdAt)}</div>
                 </div>
               </div>
-              <span className={`mono text-[10px] px-1.5 py-0.5 shrink-0 ${statusColors[r.status]}`}>{r.status.toUpperCase()}</span>
+              <span className={`mono text-[10px] px-1.5 py-0.5 shrink-0 ${statusColors[r.status] || statusColors.dismissed}`}>{r.status.toUpperCase()}</span>
             </div>
-            <p className="text-sm mt-2 text-[var(--color-muted-foreground)]">{r.reason}</p>
+            {reasonText && <p className="text-sm mt-2 text-[var(--color-muted-foreground)]">{reasonText}</p>}
             {r.status === "open" && (
               <div className="flex gap-2 mt-3">
                 <button onClick={() => toast.success("Report resolved")} className="heading text-[11px] px-3 py-1.5 bg-[hsl(142,50%,30%)] text-white hover:opacity-90 transition-opacity">RESOLVE</button>
@@ -549,7 +637,8 @@ function ReportsTab({ reports }: { reports: any[] }) {
               </div>
             )}
           </div>
-        ))}
+        );
+        })}
         {filtered.length === 0 && <Empty text="No reports match this filter." />}
       </div>
     </div>
@@ -569,6 +658,11 @@ function ActivityTab({ activity }: { activity: any[] }) {
 }
 
 function ActivityRow({ a, compact }: { a: any; compact?: boolean }) {
+  const userName =
+    typeof a.user === "string"
+      ? a.user
+      : a.user?.displayName || a.user?.username || a.metadata?.userName || "Unknown";
+  const timestamp = a.createdAt || a.timestamp;
   const colors: Record<string, string> = {
     download: "text-[hsl(210,80%,60%)]", unlock: "text-[hsl(142,50%,50%)]",
     register: "text-[hsl(280,60%,60%)]", upload: "text-[var(--color-primary)]",
@@ -584,9 +678,9 @@ function ActivityRow({ a, compact }: { a: any; compact?: boolean }) {
       <div className={`p-1.5 bg-[var(--color-muted)] shrink-0 ${colors[a.type] || ""}`}><Icon className="w-3.5 h-3.5" /></div>
       <div className="flex-1 min-w-0">
         <div className={compact ? "text-xs truncate" : "text-sm"}>{a.message}</div>
-        <div className="mono text-[10px] text-[var(--color-muted-foreground)]">by {a.user}</div>
+        <div className="mono text-[10px] text-[var(--color-muted-foreground)]">by {userName}</div>
       </div>
-      <span className="mono text-[10px] text-[var(--color-muted-foreground)] shrink-0">{fmtTimeAgo(a.timestamp)}</span>
+      <span className="mono text-[10px] text-[var(--color-muted-foreground)] shrink-0">{fmtTimeAgo(timestamp)}</span>
     </div>
   );
 }
@@ -772,7 +866,7 @@ function Empty({ text }: { text: string }) {
 
 // ━━━ MOD FORM ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function ModForm({ initial, onClose, onSaved }: { initial: any; onClose: () => void; onSaved: () => void }) {
-  const [f, setF] = useState(initial);
+  const [f, setF] = useState(() => normalizeModForm(initial));
   const [busy, setBusy] = useState(false);
   const isEdit = !!initial.id;
   const set = (k: string, v: any) => setF((p: any) => ({ ...p, [k]: v }));
@@ -781,26 +875,35 @@ function ModForm({ initial, onClose, onSaved }: { initial: any; onClose: () => v
     e.preventDefault();
     setBusy(true);
     const body = {
-      ...f,
-      price: parseFloat(f.price) || 0,
-      file_size_mb: parseFloat(f.file_size_mb) || 0,
+      title: f.title,
+      description: f.description,
+      shortDescription: f.shortDescription,
+      game: f.game,
+      version: f.version,
       tags: Array.isArray(f.tags) ? f.tags : String(f.tags).split(",").map((x: string) => x.trim()).filter(Boolean),
+      iconUrl: f.iconUrl,
       gallery: Array.isArray(f.gallery) ? f.gallery : String(f.gallery).split(",").map((x: string) => x.trim()).filter(Boolean),
+      accessType: f.accessType,
+      price: parseFloat(f.price) || 0,
+      unlockCode: f.unlockCode || undefined,
+      downloadUrl: f.downloadUrl,
+      category: f.category,
+      fileSizeMb: parseFloat(f.fileSizeMb) || 0,
     };
     try {
-      if (isEdit) await api.put(`/admin/mods/${f.id}`, body);
-      else await api.post("/admin/mods", body);
+      if (isEdit) await api.put(`/mods/${f.id}`, body);
+      else await api.post("/mods", body);
       toast.success(isEdit ? "Mod updated" : "Mod created");
       onSaved();
     } catch (err: any) {
-      toast.error(formatApiErrorDetail(err.response?.data?.detail) || "Save failed");
+      toast.error(formatApiError(err));
     } finally { setBusy(false); }
   };
 
   return (
     <form onSubmit={onSubmit} className="space-y-3">
       <Inp label="TITLE" value={f.title} onChange={v => set("title", v)} required testid="form-title" />
-      <Inp label="SHORT DESCRIPTION" value={f.short_description} onChange={v => set("short_description", v)} />
+      <Inp label="SHORT DESCRIPTION" value={f.shortDescription} onChange={v => set("shortDescription", v)} />
       <div className="space-y-1">
         <label className="heading text-[11px] tracking-widest block">DESCRIPTION</label>
         <textarea value={f.description} onChange={e => set("description", e.target.value)}
@@ -814,22 +917,104 @@ function ModForm({ initial, onClose, onSaved }: { initial: any; onClose: () => v
       <div className="grid grid-cols-3 gap-3">
         <Inp label="VERSION" value={f.version} onChange={v => set("version", v)} />
         <Inp label="AUTHOR" value={f.author} onChange={v => set("author", v)} />
-        <Inp label="FILE SIZE (MB)" value={f.file_size_mb} onChange={v => set("file_size_mb", v)} type="number" />
+        <Inp label="FILE SIZE (MB)" value={f.fileSizeMb} onChange={v => set("fileSizeMb", v)} type="number" />
       </div>
-      <Inp label="TAGS (comma separated)" value={Array.isArray(f.tags) ? f.tags.join(", ") : f.tags} onChange={v => set("tags", v)} />
-      <Inp label="ICON URL" value={f.icon_url} onChange={v => set("icon_url", v)} />
-      <Inp label="GALLERY URLS (comma separated)" value={Array.isArray(f.gallery) ? f.gallery.join(", ") : f.gallery} onChange={v => set("gallery", v)} />
-      <div className="grid grid-cols-2 gap-3 items-end">
-        <div className="flex items-center gap-2">
-          <input type="checkbox" checked={!!f.is_paid} onChange={e => set("is_paid", e.target.checked)} data-testid="form-paid" className="w-4 h-4 accent-[var(--color-primary)]" />
-          <span className="heading text-[11px]">PAID MOD</span>
+      <Inp label="TAGS (comma separated)" value={Array.isArray(f.tags) ? f.tags.join(", ") : f.tags || ""} onChange={v => set("tags", v)} />
+      
+      {/* Icon Upload */}
+      <div className="space-y-1">
+        <label className="heading text-[11px] tracking-widest block">ICON</label>
+        <div className="flex gap-2">
+          <input type="text" value={f.iconUrl || ""} onChange={e => set("iconUrl", e.target.value)} placeholder="Icon URL"
+            className="flex-1 border border-[var(--color-border)] bg-transparent px-3 py-2 outline-none focus:border-[var(--color-primary)] transition-colors" />
+          <label className="heading text-xs px-4 py-2 border border-[var(--color-border)] hover:border-[var(--color-primary)] transition-colors cursor-pointer flex items-center gap-2">
+            <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              setBusy(true);
+              try {
+                const formData = new FormData();
+                formData.append("icon", file);
+                const { data } = await api.post("/mods/upload/icon", formData, { headers: { "Content-Type": "multipart/form-data" } });
+                set("iconUrl", resolveAssetUrl(data.iconUrl));
+                toast.success("Icon uploaded");
+              } catch (err: any) {
+                toast.error(formatApiError(err));
+              } finally {
+                setBusy(false);
+                e.target.value = "";
+              }
+            }} />
+            UPLOAD
+          </label>
         </div>
-        {f.is_paid && <Inp label="PRICE ($)" value={f.price} onChange={v => set("price", v)} type="number" step="0.01" />}
+        {f.iconUrl && <img src={resolveAssetUrl(f.iconUrl)} alt="Icon preview" className="w-16 h-16 object-cover border border-[var(--color-border)] mt-2" />}
       </div>
-      {f.is_paid && f.unlock_code && (
+      
+      <Inp label="DOWNLOAD URL" value={f.downloadUrl} onChange={v => set("downloadUrl", v)} />
+      
+      {/* Gallery Upload */}
+      <div className="space-y-1">
+        <label className="heading text-[11px] tracking-widest block">GALLERY</label>
+        <div className="flex gap-2">
+          <input type="text" value={Array.isArray(f.gallery) ? f.gallery.join(", ") : (f.gallery || "")} onChange={e => set("gallery", e.target.value)} placeholder="Gallery URLs (comma separated)"
+            className="flex-1 border border-[var(--color-border)] bg-transparent px-3 py-2 outline-none focus:border-[var(--color-primary)] transition-colors" />
+          <label className="heading text-xs px-4 py-2 border border-[var(--color-border)] hover:border-[var(--color-primary)] transition-colors cursor-pointer flex items-center gap-2">
+            <input type="file" accept="image/*" multiple className="hidden" onChange={async (e) => {
+              const files = Array.from(e.target.files || []);
+              if (files.length === 0) return;
+              setBusy(true);
+              try {
+                const formData = new FormData();
+                files.forEach(file => formData.append("gallery", file));
+                const { data } = await api.post("/mods/upload/gallery", formData, { headers: { "Content-Type": "multipart/form-data" } });
+                const existing = Array.isArray(f.gallery) ? f.gallery : (f.gallery ? String(f.gallery).split(",").map((x: string) => x.trim()) : []);
+                set("gallery", [...existing, ...data.galleryUrls].map(resolveAssetUrl));
+                toast.success(`${data.galleryUrls.length} image(s) uploaded`);
+              } catch (err: any) {
+                toast.error(formatApiError(err));
+              } finally {
+                setBusy(false);
+                e.target.value = "";
+              }
+            }} />
+            UPLOAD
+          </label>
+        </div>
+        {Array.isArray(f.gallery) && f.gallery.length > 0 && (
+          <div className="flex gap-2 mt-2 flex-wrap">
+            {f.gallery.map((url: string, i: number) => (
+              <div key={i} className="relative group">
+                <img src={resolveAssetUrl(url)} alt={`Gallery ${i + 1}`} className="w-16 h-16 object-cover border border-[var(--color-border)]" />
+                <button type="button" onClick={() => set("gallery", f.gallery.filter((_: any, idx: number) => idx !== i))}
+                  className="absolute -top-1 -right-1 w-5 h-5 bg-[hsl(0,84%,60%)] text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      
+      <div className="grid grid-cols-2 gap-3 items-end">
+        <div className="space-y-1">
+          <label className="heading text-[11px] tracking-widest block">ACCESS TYPE</label>
+          <select value={f.accessType} onChange={e => set("accessType", e.target.value)}
+            className="w-full border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 outline-none focus:border-[var(--color-primary)] transition-colors">
+            <option value="free">FREE</option>
+            <option value="paid">PAID</option>
+            <option value="unlock_code">UNLOCK CODE</option>
+          </select>
+        </div>
+        {f.accessType === "paid" && <Inp label="PRICE (₹)" value={f.price} onChange={v => set("price", v)} type="number" step="0.01" />}
+      </div>
+      {f.accessType === "unlock_code" && (
+        <Inp label="UNLOCK CODE" value={f.unlockCode} onChange={v => set("unlockCode", v)} />
+      )}
+      {f.accessType === "paid" && f.unlockCode && (
         <div className="border border-[var(--color-border)] p-3 bg-[var(--color-card)] flex items-center justify-between">
-          <div><div className="mono text-[10px] text-[var(--color-muted-foreground)]">UNLOCK CODE</div><div className="heading text-lg mono">{f.unlock_code}</div></div>
-          <button type="button" onClick={() => { navigator.clipboard.writeText(f.unlock_code); toast.success("Copied"); }} className="p-2 border border-[var(--color-border)] hover:border-[var(--color-primary)] transition-colors"><Copy className="w-4 h-4" /></button>
+          <div><div className="mono text-[10px] text-[var(--color-muted-foreground)]">UNLOCK CODE</div><div className="heading text-lg mono">{f.unlockCode}</div></div>
+          <button type="button" onClick={() => { navigator.clipboard.writeText(f.unlockCode); toast.success("Copied"); }} className="p-2 border border-[var(--color-border)] hover:border-[var(--color-primary)] transition-colors"><Copy className="w-4 h-4" /></button>
         </div>
       )}
       <div className="flex justify-end gap-2 pt-3 border-t border-[var(--color-border)]">
@@ -859,7 +1044,7 @@ function Sel({ label, value, onChange, opts }: { label: string; value: string; o
     <div className="space-y-1">
       <label className="heading text-[11px] tracking-widest block">{label}</label>
       <select value={value} onChange={e => onChange(e.target.value)}
-        className="w-full border border-[var(--color-border)] bg-transparent px-3 py-2 outline-none">
+        className="w-full border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 outline-none focus:border-[var(--color-primary)] transition-colors">
         {opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
       </select>
     </div>
