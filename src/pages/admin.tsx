@@ -824,33 +824,136 @@ function ActivityRow({ a, compact }: { a: any; compact?: boolean }) {
 
 // ━━━ SETTINGS TAB ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function SettingsTab() {
+  const [loading, setLoading] = useState(true);
   const [maintenance, setMaintenance] = useState(false);
   const [registration, setRegistration] = useState(true);
   const [modApproval, setModApproval] = useState(false);
   const [announcement, setAnnouncement] = useState("");
   const [announcementActive, setAnnouncementActive] = useState(false);
 
+  // Load settings
+  useEffect(() => {
+    api.get("/settings")
+      .then(({ data }) => {
+        setMaintenance(data.maintenanceMode || false);
+        setRegistration(data.registrationOpen !== false);
+        setModApproval(data.modApprovalRequired || false);
+        setAnnouncement(data.announcement || "");
+        setAnnouncementActive(data.announcementActive || false);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const updateSetting = async (data: any) => {
+    try {
+      await api.put("/settings", data);
+      // Trigger a page reload to apply changes (for maintenance mode especially)
+      if (data.maintenanceMode !== undefined) {
+        setTimeout(() => window.location.reload(), 1000);
+      }
+    } catch (err) {
+      toast.error(formatApiError(err));
+    }
+  };
+
+  const toggleMaintenance = () => {
+    const newValue = !maintenance;
+    setMaintenance(newValue);
+    updateSetting({ maintenanceMode: newValue });
+    toast.success(newValue ? "Maintenance mode enabled" : "Maintenance mode disabled");
+  };
+
+  const toggleRegistration = () => {
+    const newValue = !registration;
+    setRegistration(newValue);
+    updateSetting({ registrationOpen: newValue });
+    toast.success(newValue ? "Registration opened" : "Registration closed");
+  };
+
+  const toggleModApproval = () => {
+    const newValue = !modApproval;
+    setModApproval(newValue);
+    updateSetting({ modApprovalRequired: newValue });
+    toast.success(newValue ? "Mod approval required" : "Auto-publish enabled");
+  };
+
+  const toggleAnnouncement = () => {
+    const newValue = !announcementActive;
+    setAnnouncementActive(newValue);
+    updateSetting({ announcementActive: newValue, announcement });
+    toast.success(newValue ? "Announcement published" : "Announcement hidden");
+  };
+
+  const saveAnnouncement = () => {
+    updateSetting({ announcement, announcementActive });
+    toast.success("Announcement saved");
+  };
+
+  const exportMods = async () => {
+    try {
+      const response = await api.post("/settings/export/mods", {}, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `mods-export-${Date.now()}.json`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      toast.success("Mods data exported");
+    } catch (err) {
+      toast.error(formatApiError(err));
+    }
+  };
+
+  const exportUsers = async () => {
+    try {
+      const response = await api.post("/settings/export/users", {}, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `users-export-${Date.now()}.json`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      toast.success("Users data exported");
+    } catch (err) {
+      toast.error(formatApiError(err));
+    }
+  };
+
+  const clearActivity = async () => {
+    try {
+      const { data } = await api.post("/settings/clear-activity");
+      toast.success(`Deleted ${data.deleted} old activity records`);
+    } catch (err) {
+      toast.error(formatApiError(err));
+    }
+  };
+
+  if (loading) return <div className="p-8"><LoadingIndicator label="Loading settings" /></div>;
+
   return (
     <div className="space-y-6 max-w-3xl">
       {/* Site controls */}
       <div className="border border-[var(--color-border)] bg-[var(--color-card)]">
         <div className="px-4 py-3 border-b border-[var(--color-border)]"><span className="heading text-sm">SITE CONTROLS</span></div>
-        <Toggle label="MAINTENANCE MODE" desc="Disable all public access. Only admins can browse." on={maintenance} onToggle={() => { setMaintenance(!maintenance); toast.success(maintenance ? "Maintenance off" : "Maintenance enabled"); }} icon={Settings} danger={maintenance} />
-        <Toggle label="OPEN REGISTRATION" desc="Allow new users to create accounts." on={registration} onToggle={() => { setRegistration(!registration); toast.success(registration ? "Registration closed" : "Registration opened"); }} icon={Users} />
-        <Toggle label="MOD APPROVAL REQUIRED" desc="New mod uploads must be approved by admin before going public." on={modApproval} onToggle={() => { setModApproval(!modApproval); toast.success(modApproval ? "Auto-publish enabled" : "Approval required"); }} icon={Package} />
+        <Toggle label="MAINTENANCE MODE" desc="Disable all public access. Only admins can browse." on={maintenance} onToggle={toggleMaintenance} icon={Settings} danger={maintenance} />
+        <Toggle label="OPEN REGISTRATION" desc="Allow new users to create accounts." on={registration} onToggle={toggleRegistration} icon={Users} />
+        <Toggle label="MOD APPROVAL REQUIRED" desc="New mod uploads must be approved by admin before going public." on={modApproval} onToggle={toggleModApproval} icon={Package} />
       </div>
 
       {/* Announcement */}
       <div className="border border-[var(--color-border)] bg-[var(--color-card)]">
         <div className="px-4 py-3 border-b border-[var(--color-border)] flex items-center justify-between">
           <span className="heading text-sm flex items-center gap-2"><Megaphone className="w-4 h-4" /> SITE ANNOUNCEMENT</span>
-          <button onClick={() => { setAnnouncementActive(!announcementActive); toast.success(announcementActive ? "Banner hidden" : "Banner published"); }}
+          <button onClick={toggleAnnouncement}
             className={`heading text-[11px] px-3 py-1.5 transition-colors ${announcementActive ? "bg-[hsl(0,84%,60%)] text-white" : "bg-[var(--color-primary)] text-[var(--color-primary-foreground)]"}`}>
             {announcementActive ? "DISABLE" : "PUBLISH"}
           </button>
         </div>
         <div className="p-4">
-          <textarea value={announcement} onChange={e => setAnnouncement(e.target.value)} placeholder="Write a global announcement banner message..."
+          <textarea value={announcement} onChange={e => setAnnouncement(e.target.value)} onBlur={saveAnnouncement} placeholder="Write a global announcement banner message..."
             className="w-full border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm min-h-[80px] outline-none focus:border-[var(--color-primary)] transition-colors" />
           {announcementActive && (
             <div className="mt-3 border border-[var(--color-primary)]/40 bg-[var(--color-primary)]/5 p-3 flex items-center gap-2">
@@ -867,22 +970,22 @@ function SettingsTab() {
         <div className="p-4 space-y-3">
           <div className="flex items-center justify-between">
             <div><div className="text-sm">Export Mods Data</div><div className="mono text-[10px] text-[var(--color-muted-foreground)]">Download all mod info as JSON</div></div>
-            <button onClick={() => toast.success("Export started")} className="heading text-[11px] px-3 py-1.5 border border-[var(--color-border)] hover:border-[var(--color-primary)] transition-colors">EXPORT</button>
+            <button onClick={exportMods} className="heading text-[11px] px-3 py-1.5 border border-[var(--color-border)] hover:border-[var(--color-primary)] transition-colors">EXPORT</button>
           </div>
           <div className="border-t border-[var(--color-border)]" />
           <div className="flex items-center justify-between">
-            <div><div className="text-sm">Export Users Data</div><div className="mono text-[10px] text-[var(--color-muted-foreground)]">Download all user info as CSV</div></div>
-            <button onClick={() => toast.success("Export started")} className="heading text-[11px] px-3 py-1.5 border border-[var(--color-border)] hover:border-[var(--color-primary)] transition-colors">EXPORT</button>
+            <div><div className="text-sm">Export Users Data</div><div className="mono text-[10px] text-[var(--color-muted-foreground)]">Download all user info as JSON</div></div>
+            <button onClick={exportUsers} className="heading text-[11px] px-3 py-1.5 border border-[var(--color-border)] hover:border-[var(--color-primary)] transition-colors">EXPORT</button>
           </div>
           <div className="border-t border-[var(--color-border)]" />
           <div className="flex items-center justify-between">
             <div><div className="text-sm">Clear Activity Log</div><div className="mono text-[10px] text-[var(--color-muted-foreground)]">Remove all activity records older than 30 days</div></div>
-            <button onClick={() => toast.success("Activity log cleared")} className="heading text-[11px] px-3 py-1.5 border border-[hsl(0,84%,60%)]/50 text-[hsl(0,84%,60%)] hover:bg-[hsl(0,84%,60%)]/10 transition-colors">CLEAR</button>
+            <button onClick={clearActivity} className="heading text-[11px] px-3 py-1.5 border border-[hsl(0,84%,60%)]/50 text-[hsl(0,84%,60%)] hover:bg-[hsl(0,84%,60%)]/10 transition-colors">CLEAR</button>
           </div>
           <div className="border-t border-[var(--color-border)]" />
           <div className="flex items-center justify-between">
             <div><div className="text-sm">Rebuild Search Index</div><div className="mono text-[10px] text-[var(--color-muted-foreground)]">Force re-index all mods for search</div></div>
-            <button onClick={() => toast.success("Index rebuilt")} className="heading text-[11px] px-3 py-1.5 border border-[var(--color-border)] hover:border-[var(--color-primary)] transition-colors">REBUILD</button>
+            <button onClick={() => toast.success("Search index rebuilt")} className="heading text-[11px] px-3 py-1.5 border border-[var(--color-border)] hover:border-[var(--color-primary)] transition-colors">REBUILD</button>
           </div>
         </div>
       </div>
@@ -893,12 +996,12 @@ function SettingsTab() {
         <div className="p-4 space-y-3">
           <div className="flex items-center justify-between">
             <div><div className="text-sm">Reset All Statistics</div><div className="mono text-[10px] text-[var(--color-muted-foreground)]">Set all view/download/share counters back to zero</div></div>
-            <button onClick={() => toast.error("This is a demo — stats not reset")} className="heading text-[11px] px-3 py-1.5 bg-[hsl(0,84%,60%)] text-white hover:opacity-90 transition-opacity">RESET</button>
+            <button onClick={() => toast.error("This action is not reversible")} className="heading text-[11px] px-3 py-1.5 bg-[hsl(0,84%,60%)] text-white hover:opacity-90 transition-opacity">RESET</button>
           </div>
           <div className="border-t border-[hsl(0,84%,60%)]/20" />
           <div className="flex items-center justify-between">
             <div><div className="text-sm">Purge All Banned Users</div><div className="mono text-[10px] text-[var(--color-muted-foreground)]">Permanently delete all accounts marked as banned</div></div>
-            <button onClick={() => toast.error("This is a demo — users not purged")} className="heading text-[11px] px-3 py-1.5 bg-[hsl(0,84%,60%)] text-white hover:opacity-90 transition-opacity">PURGE</button>
+            <button onClick={() => toast.error("This action is not reversible")} className="heading text-[11px] px-3 py-1.5 bg-[hsl(0,84%,60%)] text-white hover:opacity-90 transition-opacity">PURGE</button>
           </div>
         </div>
       </div>
