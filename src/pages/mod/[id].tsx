@@ -196,8 +196,45 @@ export default function ModDetail() {
   };
 
   if (!mod) return (
-    <div className="mx-auto max-w-7xl px-4 py-16" data-testid="mod-detail-loading">
-      <LoadingIndicator label="Loading mod" />
+    <div className="mx-auto max-w-7xl px-4 sm:px-8 py-8">
+      <div className="mb-4 h-4 w-20 bg-[var(--color-muted)] animate-pulse rounded" />
+      
+      <div className="grid lg:grid-cols-12 gap-8">
+        {/* Gallery skeleton */}
+        <div className="lg:col-span-7">
+          <div className="relative aspect-[16/10] bg-[var(--color-muted)] animate-pulse rounded" />
+          <div className="grid grid-cols-5 gap-2 mt-3">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="aspect-[16/10] bg-[var(--color-muted)] animate-pulse rounded" />
+            ))}
+          </div>
+        </div>
+
+        {/* Info skeleton */}
+        <div className="lg:col-span-5 space-y-4">
+          <div className="h-3 w-24 bg-[var(--color-muted)] animate-pulse rounded" />
+          <div className="h-8 w-3/4 bg-[var(--color-muted)] animate-pulse rounded" />
+          <div className="h-4 w-32 bg-[var(--color-muted)] animate-pulse rounded" />
+          <div className="flex gap-2">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="h-6 w-16 bg-[var(--color-muted)] animate-pulse rounded" />
+            ))}
+          </div>
+          <div className="grid grid-cols-4 gap-0 border border-[var(--color-border)]">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="p-3">
+                <div className="h-3 w-16 bg-[var(--color-muted)] animate-pulse rounded mb-2" />
+                <div className="h-5 w-12 bg-[var(--color-muted)] animate-pulse rounded" />
+              </div>
+            ))}
+          </div>
+          <div className="border-2 border-[var(--color-border)] p-5 space-y-3">
+            <div className="h-3 w-20 bg-[var(--color-muted)] animate-pulse rounded" />
+            <div className="h-6 w-40 bg-[var(--color-muted)] animate-pulse rounded" />
+            <div className="h-12 w-full bg-[var(--color-muted)] animate-pulse rounded" />
+          </div>
+        </div>
+      </div>
     </div>
   );
 
