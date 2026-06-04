@@ -356,7 +356,7 @@ export default function Header() {
               <div className="relative">
                 <button
                   onClick={() => setDropdownOpen(!dropdownOpen)}
-                  className="flex items-center gap-2 border border-[var(--color-border)] px-3 py-2 heading text-xs hover:border-[var(--color-primary)]/60 transition-colors"
+                  className="flex items-center gap-2 border border-[var(--color-border)] px-2 sm:px-3 py-2 heading text-xs hover:border-[var(--color-primary)]/60 transition-colors"
                   data-testid="user-menu-btn"
                 >
                   {user.avatarUrl ? (
@@ -368,7 +368,7 @@ export default function Header() {
                   ) : (
                     <User className="w-4 h-4" />
                   )}
-                  {user.displayName}
+                  <span className="hidden sm:inline">{user.displayName}</span>
                 </button>
                 {dropdownOpen && (
                   <div className="absolute right-0 top-full mt-1 w-52 border border-[var(--color-border)] bg-[var(--color-card)] shadow-lg z-50">
