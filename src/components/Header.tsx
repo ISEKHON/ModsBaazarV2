@@ -71,39 +71,64 @@ export default function Header() {
       return;
     }
 
-    // Fetch notification count
-    api
-      .get("/notifications/unread-count")
-      .then(({ data }) => setUnreadNotifications(data.count))
-      .catch(() => {});
+    const fetchCounts = () => {
+      // Fetch notification count
+      api
+        .get("/notifications/unread-count")
+        .then(({ data }) => setUnreadNotifications(data.count))
+        .catch(() => {});
 
-    // Fetch chat unread count
-    api
-      .get("/chats")
-      .then(({ data }) => {
-        const total = data.chats?.reduce(
-          (sum: number, c: any) => sum + (c.unreadCount || 0),
-          0
-        );
-        setUnreadMessages(total || 0);
-      })
-      .catch(() => {});
+      // Fetch chat unread count
+      api
+        .get("/chats")
+        .then(({ data }) => {
+          const total = data.chats?.reduce(
+            (sum: number, c: any) => sum + (c.unreadCount || 0),
+            0
+          );
+          setUnreadMessages(total || 0);
+        })
+        .catch(() => {});
+    };
+
+    fetchCounts();
+
+    // Listen for notifications update event
+    const handleNotificationsUpdate = () => {
+      fetchCounts();
+    };
+    
+    window.addEventListener('notifications-updated', handleNotificationsUpdate);
 
     // Real-time updates
     const unsubNotif = onSocketEvent<Notification>("notification:new", (notif) => {
       setUnreadNotifications((prev) => prev + 1);
       setNotifications((prev) => [notif, ...prev].slice(0, 5));
     });
-    const unsubChat = onSocketEvent("chat:message", () => {
+    const unsubChat = onSocketEvent<{ chatId: string }>("chat:message", (msg) => {
       // Only increment if not on messages page
       if (!window.location.pathname.startsWith("/messages")) {
         setUnreadMessages((prev) => prev + 1);
       }
     });
+    const unsubUnreadUpdate = onSocketEvent<{ chatId: string }>("chat:unread_update", () => {
+      // Refetch unread count when messages are marked as read
+      api.get("/chats")
+        .then(({ data }) => {
+          const total = data.chats?.reduce(
+            (sum: number, c: any) => sum + (c.unreadCount || 0),
+            0
+          );
+          setUnreadMessages(total || 0);
+        })
+        .catch(() => {});
+    });
 
     return () => {
-      unsubNotif();
-      unsubChat();
+      window.removeEventListener('notifications-updated', handleNotificationsUpdate);
+      if (unsubNotif) unsubNotif();
+      if (unsubChat) unsubChat();
+      if (unsubUnreadUpdate) unsubUnreadUpdate();
     };
   }, [user]);
 

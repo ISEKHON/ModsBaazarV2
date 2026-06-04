@@ -248,35 +248,70 @@ export default function Admin() {
     });
   }, []);
 
+const isAdminRoute = user?.role === "admin" || user?.role === "owner";
+
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [m, s, u, a, r] = await Promise.all([
+      const requests = [
         api.get("/mods/admin/all", { params: { limit: "100" } }),
         api.get("/mods/stats"),
-        api.get("/users/admin/all", { params: { limit: "100" } }),
-        api.get("/activity/admin/all"),
-        api.get("/reports/admin/all", { params: { limit: "100" } }),
-      ]);
-      setMods(m.data.mods || m.data || []); 
-      setStats(s.data || {}); 
-      setUsers(u.data.users || u.data || []); 
-      setActivity(a.data.activities || a.data || []);
-      setReports(r.data.reports || r.data || []);
+      ];
+
+      if (isAdminRoute) {
+        requests.push(
+          api.get("/users/admin/all", { params: { limit: "100" } }),
+          api.get("/activity/admin/all"),
+          api.get("/reports/admin/all", { params: { limit: "100" } }),
+        );
+      }
+
+      const [m, s, ...rest] = await Promise.all(requests);
+
+      setMods(m.data.mods || m.data || []);
+      setStats(s.data || {});
+
+      if (isAdminRoute) {
+        const [u, a, r] = rest as any[];
+        setUsers(u.data.users || u.data || []);
+        setActivity(a.data.activities || a.data || []);
+        setReports(r.data.reports || r.data || []);
+      } else {
+        setUsers([]);
+        setActivity([]);
+        setReports([]);
+      }
     } catch (error) {
       console.error("Failed to load admin data:", error);
       toast.error("Failed to load admin data. Check console for details.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isAdminRoute]);
+
+  const isModderRoute = user?.role === "modder" || user?.role === "admin" || user?.role === "owner";
 
   useEffect(() => {
     if (authLoading) return;
     if (!user) router.push("/login");
-    else if (user.role !== "admin" && user.role !== "owner") router.push("/");
+    else if (!isModderRoute) router.push("/");
     else refresh();
-  }, [user, authLoading, refresh, router]);
+  }, [user, authLoading, refresh, router, isModderRoute]);
+
+  useEffect(() => {
+    if (!authLoading && user?.role === "modder") {
+      setTab("mods");
+    }
+  }, [authLoading, user?.role]);
+
+  useEffect(() => {
+    if (!user || authLoading) return;
+    if (router.query.tab === "new-mod") {
+      setTab("mods");
+      setEditing(normalizeModForm({}));
+      setModalOpen(true);
+    }
+  }, [router.query.tab, user, authLoading]);
 
   useEffect(() => {
     document.body.style.overflow = modalOpen ? "hidden" : "";
@@ -385,7 +420,7 @@ export default function Admin() {
     });
   };
 
-  if (!user || (user.role !== "admin" && user.role !== "owner")) {
+  if (!user || (!isModderRoute)) {
     return (
       <div className="p-10">
         <LoadingIndicator label="Checking access" />
@@ -394,15 +429,20 @@ export default function Admin() {
   }
 
   const visibleMods = mods.filter((m: any) => m.status !== "deleted");
+  const isAdminOnly = user.role === "admin" || user.role === "owner";
   const openReports = reports.filter(r => r.status === "open").length;
-  const TABS: { key: Tab; label: string; icon: any; badge?: number }[] = [
-    { key: "dashboard", label: "OVERVIEW", icon: LayoutDashboard },
-    { key: "mods", label: "MODS", icon: Package, badge: visibleMods.length },
-    { key: "users", label: "USERS", icon: Users, badge: users.length },
-    { key: "reports", label: "REPORTS", icon: Flag, badge: openReports || undefined },
-    { key: "activity", label: "ACTIVITY", icon: Activity },
-    { key: "settings", label: "SETTINGS", icon: Settings },
-  ];
+  const TABS: { key: Tab; label: string; icon: any; badge?: number }[] = isAdminOnly
+    ? [
+        { key: "dashboard", label: "OVERVIEW", icon: LayoutDashboard },
+        { key: "mods", label: "MODS", icon: Package, badge: visibleMods.length },
+        { key: "users", label: "USERS", icon: Users, badge: users.length },
+        { key: "reports", label: "REPORTS", icon: Flag, badge: openReports || undefined },
+        { key: "activity", label: "ACTIVITY", icon: Activity },
+        { key: "settings", label: "SETTINGS", icon: Settings },
+      ]
+    : [
+        { key: "mods", label: "MY MODS", icon: Package, badge: visibleMods.length },
+      ];
 
   return (
     <>
@@ -445,7 +485,7 @@ export default function Admin() {
 
       {/* Mod Modal */}
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setModalOpen(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="w-full max-w-2xl max-h-[85vh] flex flex-col border border-[var(--color-border)] bg-[var(--color-background)]" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-5 border-b border-[var(--color-border)] shrink-0">
               <h2 className="heading text-xl">{editing?.id ? "EDIT MOD" : "NEW MOD"}</h2>
@@ -965,6 +1005,8 @@ function Empty({ text }: { text: string }) {
 function ModForm({ initial, onClose, onSaved }: { initial: any; onClose: () => void; onSaved: (mod: any) => void }) {
   const [f, setF] = useState(() => normalizeModForm(initial));
   const [busy, setBusy] = useState(false);
+  const [uploadingIcon, setUploadingIcon] = useState(false);
+  const [uploadingGallery, setUploadingGallery] = useState(false);
   const isEdit = !!initial.id;
   const set = (k: string, v: any) => setF((p: any) => ({ ...p, [k]: v }));
 
@@ -1025,11 +1067,11 @@ function ModForm({ initial, onClose, onSaved }: { initial: any; onClose: () => v
         <div className="flex gap-2">
           <input type="text" value={f.iconUrl || ""} onChange={e => set("iconUrl", e.target.value)} placeholder="Icon URL"
             className="flex-1 border border-[var(--color-border)] bg-transparent px-3 py-2 outline-none focus:border-[var(--color-primary)] transition-colors" />
-          <label className="heading text-xs px-4 py-2 border border-[var(--color-border)] hover:border-[var(--color-primary)] transition-colors cursor-pointer flex items-center gap-2">
-            <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
+          <label className="heading text-xs px-4 py-2 border border-[var(--color-border)] hover:border-[var(--color-primary)] transition-colors cursor-pointer flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-60">
+            <input type="file" accept="image/*" className="hidden" disabled={uploadingIcon} onChange={async (e) => {
               const file = e.target.files?.[0];
               if (!file) return;
-              setBusy(true);
+              setUploadingIcon(true);
               try {
                 const formData = new FormData();
                 formData.append("icon", file);
@@ -1039,11 +1081,11 @@ function ModForm({ initial, onClose, onSaved }: { initial: any; onClose: () => v
               } catch (err: any) {
                 toast.error(formatApiError(err));
               } finally {
-                setBusy(false);
+                setUploadingIcon(false);
                 e.target.value = "";
               }
             }} />
-            UPLOAD
+            {uploadingIcon ? "UPLOADING..." : "UPLOAD"}
           </label>
         </div>
         {f.iconUrl && <img src={resolveAssetUrl(f.iconUrl)} alt="Icon preview" className="w-16 h-16 object-cover border border-[var(--color-border)] mt-2" />}
@@ -1057,11 +1099,11 @@ function ModForm({ initial, onClose, onSaved }: { initial: any; onClose: () => v
         <div className="flex gap-2">
           <input type="text" value={Array.isArray(f.gallery) ? f.gallery.join(", ") : (f.gallery || "")} onChange={e => set("gallery", e.target.value)} placeholder="Gallery URLs (comma separated)"
             className="flex-1 border border-[var(--color-border)] bg-transparent px-3 py-2 outline-none focus:border-[var(--color-primary)] transition-colors" />
-          <label className="heading text-xs px-4 py-2 border border-[var(--color-border)] hover:border-[var(--color-primary)] transition-colors cursor-pointer flex items-center gap-2">
-            <input type="file" accept="image/*" multiple className="hidden" onChange={async (e) => {
+          <label className="heading text-xs px-4 py-2 border border-[var(--color-border)] hover:border-[var(--color-primary)] transition-colors cursor-pointer flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-60">
+            <input type="file" accept="image/*" multiple className="hidden" disabled={uploadingGallery} onChange={async (e) => {
               const files = Array.from(e.target.files || []);
               if (files.length === 0) return;
-              setBusy(true);
+              setUploadingGallery(true);
               try {
                 const formData = new FormData();
                 files.forEach(file => formData.append("gallery", file));
@@ -1072,11 +1114,11 @@ function ModForm({ initial, onClose, onSaved }: { initial: any; onClose: () => v
               } catch (err: any) {
                 toast.error(formatApiError(err));
               } finally {
-                setBusy(false);
+                setUploadingGallery(false);
                 e.target.value = "";
               }
             }} />
-            UPLOAD
+            {uploadingGallery ? "UPLOADING..." : "UPLOAD"}
           </label>
         </div>
         {Array.isArray(f.gallery) && f.gallery.length > 0 && (

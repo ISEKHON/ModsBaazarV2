@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/router";
 import { useAuth } from "@/context/AuthContext";
-import { api, formatApiError, resolveAssetUrl } from "@/lib/api";
-import { connectSocket, onSocketEvent, emitSocketEvent } from "@/lib/socket";
+import { api, resolveAssetUrl } from "@/lib/api";
+import { emitSocketEvent, onSocketEvent, getSocket, connectSocket } from "@/lib/socket";
 import LoadingIndicator from "@/components/LoadingIndicator";
 import { Send, ImagePlus, ArrowLeft, MessageSquare } from "lucide-react";
 import { motion } from "framer-motion";
@@ -41,6 +41,7 @@ export default function Messages() {
   const [newMsg, setNewMsg] = useState("");
   const [sending, setSending] = useState(false);
   const [loadingChats, setLoadingChats] = useState(true);
+  const [loadingMessages, setLoadingMessages] = useState(false);
   const [mobileShowChat, setMobileShowChat] = useState(false);
   const messagesEnd = useRef<HTMLDivElement>(null);
   const messagesContainer = useRef<HTMLDivElement>(null);
@@ -49,13 +50,70 @@ export default function Messages() {
   const [onlineUsers, setOnlineUsers] = useState<Record<string, boolean>>({});
   const fileInput = useRef<HTMLInputElement>(null);
   const fallbackAvatar = "/user-placeholder.svg";
+  const [isSending, setIsSending] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Initialize notification sound
+  useEffect(() => {
+    // Create a notification sound using Web Audio API
+    if (typeof window !== 'undefined') {
+      const createNotificationSound = () => {
+        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        
+        return () => {
+          try {
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            // Create a pleasant notification sound (two quick beeps)
+            oscillator.frequency.value = 800;
+            oscillator.type = 'sine';
+            
+            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+            
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + 0.1);
+            
+            // Second beep
+            const oscillator2 = audioContext.createOscillator();
+            const gainNode2 = audioContext.createGain();
+            
+            oscillator2.connect(gainNode2);
+            gainNode2.connect(audioContext.destination);
+            
+            oscillator2.frequency.value = 1000;
+            oscillator2.type = 'sine';
+            
+            gainNode2.gain.setValueAtTime(0.3, audioContext.currentTime + 0.15);
+            gainNode2.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.25);
+            
+            oscillator2.start(audioContext.currentTime + 0.15);
+            oscillator2.stop(audioContext.currentTime + 0.25);
+          } catch (e) {
+            console.log('Audio playback failed:', e);
+          }
+        };
+      };
+      
+      audioRef.current = { play: createNotificationSound() } as any;
+    }
+  }, []);
 
   useEffect(() => {
     if (!authLoading && !user) router.push("/login");
   }, [user, authLoading, router]);
 
   useEffect(() => {
-    if (user) connectSocket();
+    if (user) {
+      const socket = getSocket();
+      if (!socket?.connected) {
+        connectSocket();
+      }
+    }
   }, [user]);
 
   // Fetch chats
@@ -64,16 +122,45 @@ export default function Messages() {
     api.get("/chats").then(({ data }) => {
       setChats(data.chats || []);
       setLoadingChats(false);
+      
+      // Auto-select chat from query param if present
+      const chatId = router.query.chat as string | undefined;
+      if (chatId && data.chats?.some((c: Chat) => c.id === chatId)) {
+        setActiveChat(chatId);
+        setMobileShowChat(true);
+        // Clean up URL
+        router.replace("/messages", undefined, { shallow: true });
+      }
     }).catch(() => setLoadingChats(false));
   }, [user]);
 
   // Fetch messages for active chat
   useEffect(() => {
     if (!activeChat) return;
-    api.get(`/chats/${activeChat}`).then(({ data }) => {
-      setMessages(data.messages || []);
-    });
-    emitSocketEvent("chat:join", activeChat);
+    setLoadingMessages(true);
+    api.get(`/chats/${activeChat}`)
+      .then(({ data }) => {
+        setMessages(data.messages || []);
+        setLoadingMessages(false);
+        
+        // Mark notifications from this chat as read
+        api.put('/notifications/read-by-chat', { chatId: activeChat })
+          .then(() => {
+            // Emit event to update notification count in header
+            window.dispatchEvent(new CustomEvent('notifications-updated'));
+          })
+          .catch(() => {});
+      })
+      .catch((error) => {
+        console.error("Failed to load messages:", error);
+        setLoadingMessages(false);
+      });
+    
+    // Join the chat room for real-time events
+    const socket = getSocket();
+    if (socket?.connected) {
+      emitSocketEvent("chat:join", activeChat);
+    }
   }, [activeChat]);
 
   // Auto-scroll chat container only
@@ -89,7 +176,30 @@ export default function Messages() {
   useEffect(() => {
     const unsub = onSocketEvent<Message>("chat:message", (msg) => {
       if (msg.chatId === activeChat) {
-        setMessages((prev) => [...prev, msg]);
+        setMessages((prev) => {
+          // Avoid duplicates - check if message already exists
+          if (prev.some(m => m.id === msg.id)) {
+            return prev;
+          }
+          // Remove any temp messages and add the real one
+          return [...prev.filter(m => !m.id.startsWith('temp-')), msg];
+        });
+        
+        // Mark notifications for this chat as read since we're viewing it
+        api.put('/notifications/read-by-chat', { chatId: activeChat })
+          .then(() => {
+            window.dispatchEvent(new CustomEvent('notifications-updated'));
+          })
+          .catch(() => {});
+        
+        // Play sound if message is from someone else
+        if (msg.senderId !== user?.id && audioRef.current?.play) {
+          try {
+            audioRef.current.play();
+          } catch (error) {
+            // Ignore audio errors
+          }
+        }
       }
       // Update chat list
       setChats((prev) =>
@@ -99,17 +209,37 @@ export default function Messages() {
             : c
         )
       );
+      
+      // Play sound for messages in other chats
+      if (msg.chatId !== activeChat && msg.senderId !== user?.id && audioRef.current?.play) {
+        try {
+          audioRef.current.play();
+        } catch (error) {
+          // Ignore audio errors
+        }
+      }
     });
-    return unsub;
-  }, [activeChat]);
+    return () => {
+      if (unsub) unsub();
+    };
+  }, [activeChat, user?.id]);
 
   // Typing indicator
   useEffect(() => {
-    const unsub = onSocketEvent<{ chatId: string; userId: string; isTyping: boolean }>("chat:typing", (data) => {
+    const unsub = onSocketEvent<{ chatId: string; userId: string; username: string; isTyping: boolean }>("chat:typing", (data) => {
       if (data.chatId !== activeChat) return;
       setTypingUsers((prev) => ({ ...prev, [data.userId]: data.isTyping }));
+      
+      // Auto-clear typing after 3 seconds
+      if (data.isTyping) {
+        setTimeout(() => {
+          setTypingUsers((prev) => ({ ...prev, [data.userId]: false }));
+        }, 3000);
+      }
     });
-    return unsub;
+    return () => {
+      if (unsub) unsub();
+    };
   }, [activeChat]);
 
   // Presence updates
@@ -122,10 +252,28 @@ export default function Messages() {
       data.userIds.forEach((id) => { next[id] = true; });
       setOnlineUsers(next);
     });
-    emitSocketEvent("presence:request");
+    
+    // Request presence sync when socket connects
+    const socket = getSocket();
+    if (socket?.connected) {
+      emitSocketEvent("presence:request");
+    }
+    
+    // Also listen for socket connection to request presence
+    const handleConnect = () => {
+      emitSocketEvent("presence:request");
+    };
+    
+    if (socket) {
+      socket.on('connect', handleConnect);
+    }
+    
     return () => {
-      unsub();
-      unsubSync();
+      if (unsub) unsub();
+      if (unsubSync) unsubSync();
+      if (socket) {
+        socket.off('connect', handleConnect);
+      }
     };
   }, []);
 
@@ -134,7 +282,9 @@ export default function Messages() {
     const unsub = onSocketEvent<{ chatId: string; status: "active" | "paid" | "archived" }>("chat:status", (data) => {
       setChats((prev) => prev.map((c) => (c.id === data.chatId ? { ...c, status: data.status } : c)));
     });
-    return unsub;
+    return () => {
+      if (unsub) unsub();
+    };
   }, []);
 
   const isPrivileged = user?.role === "admin" || user?.role === "owner";
@@ -149,25 +299,99 @@ export default function Messages() {
   };
 
   const sendMessage = async () => {
-    if (!newMsg.trim() || !activeChat || sending) return;
+    if (!newMsg.trim() || !activeChat || sending || isSending) return;
+    
+    const messageToSend = newMsg.trim();
+    const tempId = `temp-${Date.now()}`;
+    
+    // Optimistic update - show message immediately
+    const optimisticMessage: Message = {
+      id: tempId,
+      chatId: activeChat,
+      senderId: user!.id,
+      content: messageToSend,
+      imageUrl: null,
+      isRead: false,
+      createdAt: new Date().toISOString(),
+      sender: {
+        id: user!.id,
+        username: user!.username,
+        displayName: user!.displayName || user!.username,
+        avatarUrl: user!.avatarUrl || null,
+      },
+    };
+    
+    setMessages((prev) => [...prev, optimisticMessage]);
+    setNewMsg(""); // Clear input immediately
+    setIsSending(true);
     setSending(true);
+    
+    // Simulate typing delay (100-300ms based on message length)
+    const typingDelay = Math.min(300, Math.max(100, messageToSend.length * 10));
+    await new Promise(resolve => setTimeout(resolve, typingDelay));
+    
     try {
-      await api.post(`/chats/${activeChat}/messages`, { content: newMsg });
-      setNewMsg("");
+      const { data } = await api.post(`/chats/${activeChat}/messages`, { content: messageToSend });
+      // Replace optimistic message with real one
+      // The socket will also emit this message, but we handle duplicates in the socket listener
+      setMessages((prev) => prev.map(m => m.id === tempId ? data : m));
       emitSocketEvent("chat:typing", { chatId: activeChat, isTyping: false });
-    } catch {}
-    setSending(false);
+    } catch (error) {
+      // Remove optimistic message and restore input on error
+      setMessages((prev) => prev.filter(m => m.id !== tempId));
+      setNewMsg(messageToSend);
+    } finally {
+      setIsSending(false);
+      setSending(false);
+    }
   };
 
   const sendImage = async (file: File) => {
     if (!activeChat) return;
+    
+    const tempId = `temp-img-${Date.now()}`;
+    const previewUrl = URL.createObjectURL(file);
+    
+    // Optimistic update - show image immediately with loading state
+    const optimisticMessage: Message = {
+      id: tempId,
+      chatId: activeChat,
+      senderId: user!.id,
+      content: null,
+      imageUrl: previewUrl,
+      isRead: false,
+      createdAt: new Date().toISOString(),
+      sender: {
+        id: user!.id,
+        username: user!.username,
+        displayName: user!.displayName || user!.username,
+        avatarUrl: user!.avatarUrl || null,
+      },
+    };
+    
+    setMessages((prev) => [...prev, optimisticMessage]);
+    
     const formData = new FormData();
     formData.append("image", file);
+    
     try {
-      await api.post(`/chats/${activeChat}/image`, formData, {
+      const { data } = await api.post(`/chats/${activeChat}/image`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-    } catch {}
+      
+      // Replace optimistic message with real one
+      setMessages((prev) => prev.map(m => {
+        if (m.id === tempId) {
+          URL.revokeObjectURL(previewUrl); // Clean up blob URL
+          return data;
+        }
+        return m;
+      }));
+    } catch (error) {
+      // Remove optimistic message on error
+      setMessages((prev) => prev.filter(m => m.id !== tempId));
+      URL.revokeObjectURL(previewUrl); // Clean up blob URL
+    }
   };
 
   const selectChat = (chatId: string) => {
@@ -360,47 +584,112 @@ export default function Messages() {
                 </div>
 
                 {/* Messages */}
-                <div ref={messagesContainer} className="flex-1 overflow-y-auto p-4 space-y-3">
-                  {messages.map((msg) => (
+                <div ref={messagesContainer} className="flex-1 overflow-y-auto p-4 pb-24 space-y-3">
+                  {loadingMessages ? (
+                    <div className="flex items-center justify-center h-full">
+                      <LoadingIndicator label="Loading messages" size="sm" />
+                    </div>
+                  ) : (
+                    <>
+                      {messages.map((msg) => {
+                        const isTempMessage = msg.id.startsWith('temp-');
+                        const isTempImage = msg.id.startsWith('temp-img-');
+                        return (
+                        <motion.div
+                          key={msg.id}
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className={`flex ${msg.senderId === user.id ? "justify-end" : "justify-start"}`}
+                        >
+                          <div className={`max-w-[70%] flex gap-2 ${msg.senderId === user.id ? "flex-row-reverse" : "flex-row"}`}>
+                            {msg.senderId !== user.id && (
+                              <img
+                                src={resolveAssetUrl(msg.sender.avatarUrl) || fallbackAvatar}
+                                alt=""
+                                className="w-6 h-6 object-cover border border-[var(--color-border)] self-end rounded-full"
+                              />
+                            )}
+                            <div className={`${msg.senderId === user.id
+                              ? "bg-[var(--color-primary)] text-[var(--color-primary-foreground)]"
+                              : "bg-[var(--color-muted)] border border-[var(--color-border)]"
+                            } p-3 rounded-lg`}>
+                              <div className="mono text-[10px] opacity-70 mb-1">{msg.sender.displayName}</div>
+                              {msg.content && <p className="text-sm break-words">{msg.content}</p>}
+                              {msg.imageUrl && (
+                                <div className="relative">
+                                  <img
+                                    src={resolveAssetUrl(msg.imageUrl)}
+                                    alt=""
+                                    className={`max-w-full max-h-48 object-contain mt-1 cursor-pointer rounded-md ${isTempImage ? 'opacity-60' : ''}`}
+                                    onClick={() => !isTempImage && window.open(resolveAssetUrl(msg.imageUrl), "_blank")}
+                                  />
+                                  {isTempImage && (
+                                    <div className="absolute inset-0 flex items-center justify-center">
+                                      <div className="bg-black/60 text-white px-3 py-1.5 rounded-md flex items-center gap-2">
+                                        <div className="flex items-center gap-1">
+                                          <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></span>
+                                          <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" style={{ animationDelay: '150ms' }}></span>
+                                          <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" style={{ animationDelay: '300ms' }}></span>
+                                        </div>
+                                        <span className="mono text-[10px]">Uploading...</span>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              <div className="mono text-[9px] opacity-50 mt-1 text-right flex items-center justify-end gap-1.5">
+                                {isTempMessage && !isTempImage ? (
+                                  <>
+                                    <span className="flex items-center gap-0.5">
+                                      <span className="w-1 h-1 bg-current rounded-full animate-pulse"></span>
+                                      <span className="w-1 h-1 bg-current rounded-full animate-pulse" style={{ animationDelay: '150ms' }}></span>
+                                      <span className="w-1 h-1 bg-current rounded-full animate-pulse" style={{ animationDelay: '300ms' }}></span>
+                                    </span>
+                                    <span>Sending...</span>
+                                  </>
+                                ) : isTempImage ? (
+                                  <>
+                                    <span className="flex items-center gap-0.5">
+                                      <span className="w-1 h-1 bg-current rounded-full animate-pulse"></span>
+                                      <span className="w-1 h-1 bg-current rounded-full animate-pulse" style={{ animationDelay: '150ms' }}></span>
+                                      <span className="w-1 h-1 bg-current rounded-full animate-pulse" style={{ animationDelay: '300ms' }}></span>
+                                    </span>
+                                    <span>Uploading...</span>
+                                  </>
+                                ) : (
+                                  new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </motion.div>
+                        );
+                      })}
+                      {isOtherTyping && (
                     <motion.div
-                      key={msg.id}
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className={`flex ${msg.senderId === user.id ? "justify-end" : "justify-start"}`}
+                      className="flex justify-start"
                     >
-                      <div className={`max-w-[70%] flex gap-2 ${msg.senderId === user.id ? "flex-row-reverse" : "flex-row"}`}>
-                        {msg.senderId !== user.id && (
-                          <img
-                            src={resolveAssetUrl(msg.sender.avatarUrl) || fallbackAvatar}
-                            alt=""
-                            className="w-6 h-6 object-cover border border-[var(--color-border)] self-end rounded-full"
-                          />
-                        )}
-                        <div className={`${msg.senderId === user.id
-                        ? "bg-[var(--color-primary)] text-[var(--color-primary-foreground)]"
-                        : "bg-[var(--color-muted)] border border-[var(--color-border)]"
-                        } p-3`}>
-                        <div className="mono text-[10px] opacity-70 mb-1">{msg.sender.displayName}</div>
-                        {msg.content && <p className="text-sm break-words">{msg.content}</p>}
-                        {msg.imageUrl && (
-                          <img
-                            src={resolveAssetUrl(msg.imageUrl)}
-                            alt=""
-                            className="max-w-full max-h-48 object-contain mt-1 cursor-pointer"
-                            onClick={() => window.open(resolveAssetUrl(msg.imageUrl), "_blank")}
-                          />
-                        )}
-                        <div className="mono text-[9px] opacity-50 mt-1 text-right">
-                          {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      <div className="max-w-[70%] flex gap-2">
+                        <img
+                          src={resolveAssetUrl(activeChatData?.otherUser.avatarUrl) || fallbackAvatar}
+                          alt=""
+                          className="w-6 h-6 object-cover border border-[var(--color-border)] self-end rounded-full"
+                        />
+                        <div className="bg-[var(--color-muted)] border border-[var(--color-border)] p-3 px-4 rounded-lg">
+                          <div className="flex items-center gap-1">
+                            <span className="w-2 h-2 bg-[var(--color-muted-foreground)] rounded-full animate-bounce" style={{ animationDelay: '0ms', animationDuration: '1s' }}></span>
+                            <span className="w-2 h-2 bg-[var(--color-muted-foreground)] rounded-full animate-bounce" style={{ animationDelay: '150ms', animationDuration: '1s' }}></span>
+                            <span className="w-2 h-2 bg-[var(--color-muted-foreground)] rounded-full animate-bounce" style={{ animationDelay: '300ms', animationDuration: '1s' }}></span>
+                          </div>
                         </div>
                       </div>
-                      </div>
                     </motion.div>
-                  ))}
-                  {isOtherTyping && (
-                    <div className="mono text-[10px] text-[var(--color-muted-foreground)]">{activeChatData?.otherUser.displayName} is typing...</div>
                   )}
                   <div ref={messagesEnd} />
+                    </>
+                  )}
                 </div>
 
                 {/* Input */}
@@ -421,16 +710,17 @@ export default function Messages() {
                         emitSocketEvent("chat:typing", { chatId: activeChat, isTyping: false });
                       }, 1200);
                     }}
-                    onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                    onKeyDown={(e) => e.key === "Enter" && !isSending && sendMessage()}
                     onBlur={() => {
                       if (!activeChat) return;
                       emitSocketEvent("chat:typing", { chatId: activeChat, isTyping: false });
                     }}
                     placeholder="Type a message..."
-                    className="flex-1 mono bg-transparent border border-[var(--color-border)] h-10 px-3 text-sm outline-none focus:border-[var(--color-primary)] transition-colors"
+                    disabled={isSending}
+                    className="flex-1 mono bg-transparent border border-[var(--color-border)] h-10 px-3 text-sm outline-none focus:border-[var(--color-primary)] transition-colors disabled:opacity-50"
                     data-testid="message-input"
                   />
-                  <button onClick={sendMessage} disabled={sending || !newMsg.trim()}
+                  <button onClick={sendMessage} disabled={sending || isSending || !newMsg.trim()}
                     className="p-2 bg-[var(--color-primary)] text-[var(--color-primary-foreground)] hover:opacity-90 disabled:opacity-50 transition-opacity"
                     data-testid="send-btn">
                     <Send className="w-5 h-5" />
