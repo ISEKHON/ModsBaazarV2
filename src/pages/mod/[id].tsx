@@ -58,7 +58,7 @@ export default function ModDetail() {
   // Load reviews
   useEffect(() => {
     if (!id) return;
-    api.get(`/reviews/mod/${id}`).then(({ data }) => {
+    api.get(`/reviews/mod/${id}`, { params: { page: "1", limit: "10", sort: "newest" } }).then(({ data }) => {
       setReviews(data.reviews || []);
     }).catch(() => {});
   }, [id]);
@@ -123,6 +123,13 @@ export default function ModDetail() {
   const handleReview = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) { router.push("/login"); return; }
+    
+    // Validate review content
+    if (reviewContent.trim().length < 5) {
+      toast.error("Review must be at least 5 characters");
+      return;
+    }
+    
     setReviewBusy(true);
     try {
       if (editingReview) {
@@ -136,7 +143,7 @@ export default function ModDetail() {
       setReviewRating(5);
       setEditingReview(null);
       // Reload reviews
-      const { data } = await api.get(`/reviews/mod/${id}`);
+      const { data } = await api.get(`/reviews/mod/${id}`, { params: { page: "1", limit: "10", sort: "newest" } });
       setReviews(data.reviews || []);
     } catch (err) {
       toast.error(formatApiError(err));
