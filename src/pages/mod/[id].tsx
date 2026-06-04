@@ -87,7 +87,7 @@ export default function ModDetail() {
     try {
       const { data } = await api.post(`/mods/${id}/download`);
       if (data.downloadUrl) {
-        window.open(data.downloadUrl, "_blank");
+        window.location.href = data.downloadUrl;
       }
       toast.success("Download started");
       setMod((m: any) => ({ ...m, downloads: (m.downloads || 0) + 1 }));
@@ -103,7 +103,7 @@ export default function ModDetail() {
     try {
       const { data } = await api.post(`/mods/${id}/unlock`, { code });
       toast.success("Mod unlocked! Downloading...");
-      if (data.downloadUrl) window.open(data.downloadUrl, "_blank");
+      if (data.downloadUrl) window.location.href = data.downloadUrl;
       setCode("");
       load();
     } catch (err: any) {

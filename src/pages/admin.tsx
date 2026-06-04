@@ -8,7 +8,7 @@ import {
   Edit, Trash, Plus, Star, Copy, X, Users, Package, Activity,
   LayoutDashboard, Download, Eye, Unlock, Shield, Ban, UserCheck,
   Search, AlertTriangle, Settings, Megaphone, Flag,
-  ToggleLeft, ToggleRight, Bell, FileWarning, Clock,
+  ToggleLeft, ToggleRight, Bell, FileWarning, Clock, CheckCircle2,
 } from "lucide-react";
 import Head from "next/head";
 
@@ -600,16 +600,68 @@ function DashboardTab({ stats, mods, users, activity, reports, setTab }: any) {
 // ━━━ MODS TAB ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function ModsTab({ mods, onNew, onEdit, onDelete, onFeature }: any) {
   const [search, setSearch] = useState("");
-  const filtered = mods.filter((m: any) =>
+  const [statusFilter, setStatusFilter] = useState<"all" | "published" | "pending" | "rejected">("all");
+  
+  let filtered = mods.filter((m: any) =>
     m.title.toLowerCase().includes(search.toLowerCase()) || 
     (m.author?.username || "").toLowerCase().includes(search.toLowerCase()) ||
     (m.author?.displayName || "").toLowerCase().includes(search.toLowerCase())
   );
+  
+  if (statusFilter !== "all") {
+    filtered = filtered.filter((m: any) => m.status === statusFilter);
+  }
+
+  const approveMod = async (modId: string) => {
+    try {
+      await api.put(`/mods/admin/${modId}/status`, { status: "published" });
+      toast.success("Mod approved");
+      window.location.reload();
+    } catch (err) {
+      toast.error(formatApiError(err));
+    }
+  };
+
+  const rejectMod = async (modId: string) => {
+    const reason = prompt("Enter rejection reason (optional):");
+    try {
+      await api.put(`/mods/admin/${modId}/status`, { status: "rejected", reason: reason || undefined });
+      toast.success("Mod rejected");
+      window.location.reload();
+    } catch (err) {
+      toast.error(formatApiError(err));
+    }
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "published":
+        return <span className="mono text-[9px] px-1.5 py-0.5 bg-[hsl(142,50%,30%)] text-white">PUBLISHED</span>;
+      case "pending":
+        return <span className="mono text-[9px] px-1.5 py-0.5 bg-[hsl(45,80%,40%)] text-black">PENDING</span>;
+      case "rejected":
+        return <span className="mono text-[9px] px-1.5 py-0.5 bg-[hsl(0,84%,60%)] text-white">REJECTED</span>;
+      default:
+        return <span className="mono text-[9px] px-1.5 py-0.5 bg-[var(--color-muted)] text-[var(--color-muted-foreground)]">{status}</span>;
+    }
+  };
+
+  const pendingCount = mods.filter((m: any) => m.status === "pending").length;
 
   return (
     <div>
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
-        <SearchBox value={search} onChange={setSearch} placeholder="Search mods..." testid="admin-mod-search" />
+        <div className="flex flex-col sm:flex-row gap-3 flex-1">
+          <SearchBox value={search} onChange={setSearch} placeholder="Search mods..." testid="admin-mod-search" />
+          <div className="flex gap-1">
+            {(["all", "published", "pending", "rejected"] as const).map(f => (
+              <Chip key={f} active={statusFilter === f} onClick={() => setStatusFilter(f)}>
+                {f.toUpperCase()}
+                {f === "pending" && pendingCount > 0 && ` (${pendingCount})`}
+              </Chip>
+            ))}
+          </div>
+        </div>
         <button onClick={onNew} className="heading bg-[var(--color-primary)] text-[var(--color-primary-foreground)] px-4 py-2 hover:opacity-90 flex items-center gap-2 transition-opacity shrink-0" data-testid="add-mod-btn">
           <Plus className="w-4 h-4" /> NEW MOD
         </button>
@@ -622,6 +674,7 @@ function ModsTab({ mods, onNew, onEdit, onDelete, onFeature }: any) {
               <th className="text-left p-3">TITLE</th>
               <th className="text-left p-3 hidden md:table-cell">GAME</th>
               <th className="text-left p-3 hidden sm:table-cell">AUTHOR</th>
+              <th className="text-left p-3">STATUS</th>
               <th className="text-left p-3">PRICE</th>
               <th className="text-right p-3 hidden md:table-cell">DL</th>
               <th className="text-right p-3 hidden lg:table-cell">VIEWS</th>
@@ -637,10 +690,17 @@ function ModsTab({ mods, onNew, onEdit, onDelete, onFeature }: any) {
                 </div></td>
                 <td className="p-3 mono text-xs uppercase hidden md:table-cell">{m.game}</td>
                 <td className="p-3 mono text-xs hidden sm:table-cell">{m.author?.displayName || m.author?.username || "Unknown"}</td>
+                <td className="p-3">{getStatusBadge(m.status)}</td>
                 <td className="p-3 mono text-xs">{m.accessType === "paid" ? `₹${(Number(m.price) || 0).toFixed(2)}` : "FREE"}</td>
                 <td className="p-3 mono text-xs text-right hidden md:table-cell">{m.downloads.toLocaleString()}</td>
                 <td className="p-3 mono text-xs text-right hidden lg:table-cell">{m.views.toLocaleString()}</td>
                 <td className="p-3 text-right"><div className="flex items-center justify-end gap-0.5">
+                  {m.status === "pending" && (
+                    <>
+                      <IconBtn onClick={() => approveMod(m.id)} title="Approve" testid={`approve-${m.id}`}><CheckCircle2 className="w-4 h-4 text-[hsl(142,50%,40%)]" /></IconBtn>
+                      <IconBtn onClick={() => rejectMod(m.id)} title="Reject" testid={`reject-${m.id}`} danger><X className="w-4 h-4" /></IconBtn>
+                    </>
+                  )}
                   <IconBtn onClick={() => onFeature(m.id)} title="Feature" testid={`feature-${m.id}`}><Star className={`w-4 h-4 ${m.featured ? "fill-[var(--color-primary)] text-[var(--color-primary)]" : ""}`} /></IconBtn>
                   <IconBtn onClick={() => onEdit(m)} title="Edit" testid={`edit-${m.id}`}><Edit className="w-4 h-4" /></IconBtn>
                   <IconBtn onClick={() => onDelete(m)} title="Delete" testid={`delete-${m.id}`} danger><Trash className="w-4 h-4" /></IconBtn>
