@@ -5,12 +5,12 @@ import { motion } from "framer-motion";
 import { api, formatApiError, resolveAssetUrl } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import LoadingIndicator from "@/components/LoadingIndicator";
+import Meta from "@/components/Meta";
 import { toast } from "sonner";
 import {
   Download, Eye, Share2, Lock, Key, Calendar, User, Package, Tag, ArrowLeft,
   CheckCircle2, Heart, Star, MessageSquare, Flag, AlertTriangle, Trash2, Edit
 } from "lucide-react";
-import Head from "next/head";
 
 export default function ModDetail() {
   const router = useRouter();
@@ -210,10 +210,13 @@ export default function ModDetail() {
 
   return (
     <>
-      <Head>
-        <title>{mod.title} — FS Mods Hub</title>
-        <meta name="description" content={mod.shortDescription || mod.description?.slice(0, 160)} />
-      </Head>
+      <Meta 
+        title={mod.title}
+        description={mod.shortDescription || mod.description?.slice(0, 160) || "Download this mod for Farming Simulator"}
+        image={resolveAssetUrl(mod.iconUrl)}
+        url={`/mod/${mod.id}`}
+        type="article"
+      />
       <div className="mx-auto max-w-7xl px-4 sm:px-8 py-8" data-testid={`mod-detail-${mod.id}`}>
         <button onClick={() => router.back()} className="mono text-xs text-[var(--color-muted-foreground)] hover:text-[var(--color-primary)] flex items-center gap-1 mb-4 transition-colors" data-testid="back-btn">
           <ArrowLeft className="w-3 h-3" /> BACK

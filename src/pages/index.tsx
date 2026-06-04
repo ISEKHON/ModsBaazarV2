@@ -5,8 +5,8 @@ import { api } from "@/lib/api";
 import ModCard from "@/components/ModCard";
 import StatBlock from "@/components/StatBlock";
 import AnimatedCounter from "@/components/AnimatedCounter";
+import Meta from "@/components/Meta";
 import { ArrowRight, Users, Download, Eye, Sparkles, ChevronRight } from "lucide-react";
-import Head from "next/head";
 
 const HERO = "https://images.pexels.com/photos/12677320/pexels-photo-12677320.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=900&w=1600";
 
@@ -40,10 +40,11 @@ export default function Home() {
 
   return (
     <>
-      <Head>
-        <title>FS Mods Hub — Farming Simulator Mods Vault</title>
-        <meta name="description" content="A hand-curated vault of Farming Simulator 22 & 25 mods. Download free and premium mods in one click." />
-      </Head>
+      <Meta 
+        title="Farming Simulator Mods Vault"
+        description="A hand-curated vault of Farming Simulator 22 & 25 mods. Download free and premium mods in one click."
+        url="/"
+      />
       <div data-testid="home-page">
         {/* HERO */}
         <section ref={heroRef} className="relative border-b border-[var(--color-border)] overflow-hidden">
